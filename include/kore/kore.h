@@ -703,12 +703,12 @@ int main(int argc, char** argv)
     return kmain(argc, argv);
 }
 
-#if OS_WIN32
+#if K_OS_WIN32
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prevInst, LPSTR cmdLine, int cmdShow)
 {
     int result = kmain(__argc, __argv);
 
-#ifdef _DEBUG
+#ifdef K_DEBUG
     if (_CrtDumpMemoryLeaks())
     {
         MessageBoxA(0, "Memory leaks found!", "ERROR", MB_ICONERROR | MB_OK);

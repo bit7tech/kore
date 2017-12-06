@@ -39,7 +39,7 @@ solution "kore"
 	project "kore"
 		targetdir "../_bin/%{cfg.platform}/%{cfg.buildcfg}/%{prj.name}"
 		objdir "../_obj/%{cfg.platform}/%{cfg.buildcfg}/%{prj.name}"
-		kind "ConsoleApp"
+		kind "WindowedApp"
 		files {
 			"../include/**.h",
 			"../src/**.c",
