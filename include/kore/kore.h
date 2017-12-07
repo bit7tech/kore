@@ -242,6 +242,9 @@ void arenaPop(Arena* arena);
 // Delete an array entry
 #define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*a)), --__arrayCount(a), (a))
 
+// Index of element
+#define arrayIndexOf(a, e) (((e) - (a)) / sizeof(*(a)))
+
 //
 // Internal routines
 //
@@ -255,6 +258,34 @@ void arenaPop(Arena* arena);
 #define __arrayGrow(a, n) ((a) = __arrayInternalGrow((a), (n), sizeof(*(a))))
 
 internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
+
+//----------------------------------------------------------------------------------------------------------------------
+// Pools
+
+#define Pool(T) T*
+
+// Destroy a pool
+#define poolDone(p) arrayDone(p)
+
+// Allocate an element from the pool - return index
+#define poolAcquire(p) poolIndexOf((p), __poolInternalAcquire((p), (p) ? __poolCapacity(p) : 1, sizeof(*(p))))
+
+// Release an element back to the pool
+#define poolRecycle(p, i) __poolInternalRecycle((p), (i), sizeof(*(p)))
+
+// Index of an element
+#define poolIndexOf(p, e) ((i64)((u8 *)(e) - (u8 *)(p)) / sizeof(*(p)))
+
+//
+// Internal routines
+//
+
+#define __poolRaw(p) __arrayRaw(p)
+#define __poolFreeList(p) __poolRaw(p)[1]
+#define __poolCapacity(p) __poolRaw(p)[0]
+
+internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize);
+internal void __poolInternalRecycle(void* p, i64 index, i64 elemSize);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -586,6 +617,7 @@ bool match(const i8 *regexp, const i8* text);
 //  PATTERN     Pattern matching
 //  PLATFORM    Platform-specific code
 //  PNG         Simple uncompressed PNG output (for debugging)
+//  POOL        Memory pools
 //  RANDOM      Random number generation
 //  SHA1        SHA-1 checksumming
 //  SPAWN       Process spawning API
@@ -903,6 +935,60 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize)
     {
         return 0;
     }
+}
+
+//----------------------------------------------------------------------------------------------------------------------{POOL}
+//----------------------------------------------------------------------------------------------------------------------
+// Pools
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+
+internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize)
+{
+    // Test for capacity
+    // If this assert triggers, the element size is too small for a pool.
+    K_ASSERT(elemSize >= sizeof(i64));
+    if (!p || (__poolFreeList(p) == __poolCapacity(p)))
+    {
+        // We have no more room
+        i64 oldCapacity = p ? __poolCapacity(p) : 0;
+        i64 doubleCurrent = 2 * oldCapacity;
+        i64 minNeeded = (p ? __poolCapacity(p) : 0) + 1;
+        i64 capacity = doubleCurrent > minNeeded ? doubleCurrent : minNeeded;
+        i64 oldBytes = p ? elemSize * __poolCapacity(p) + sizeof(i64) * 2 : 0;
+        i64 bytes = elemSize * capacity + sizeof(i64) * 2;
+        i64* newP = (i64 *)K_REALLOC(p ? __poolRaw(p) : 0, oldBytes, bytes);
+        if (newP)
+        {
+            u8* b = (u8 *)newP + 2;
+            if (!p) newP[0] = capacity;
+            for (i64 i = oldCapacity; i < capacity; ++i)
+            {
+                *(i64 *)(&b[i * elemSize]) = i + 1;
+            }
+        }
+        else
+        {
+            return 0;
+        }
+
+        p = newP + 2;
+    }
+
+    // Do the acquiring
+    u8* b = (u8 *)p;
+    i64 newIndex = __poolFreeList(p);
+    i64* b64 = (i64 *)&b[newIndex * elemSize];
+    __poolFreeList(p) = *b64;
+    return b64;
+}
+
+internal void __poolInternalRecycle(void* p, i64 index, i64 elemSize)
+{
+    u8* b = (u8 *)p;
+    i64* b64 = (i64 *)&b[index * elemSize];
+    *b64 = __poolFreeList(p);
+    __poolFreeList(p) = index;
 }
 
 //----------------------------------------------------------------------------------------------------------------------{DATA}
