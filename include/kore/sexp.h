@@ -33,7 +33,7 @@ typedef struct
     StringTable     m_symbols;
     Pool(i64)       m_integers;
     Pool(f64)       m_floats;
-    Pool(Cell)      m_cells;
+    Pool(SxCell)    m_cells;
     Arena           m_scratch;
 }
 SxContext;
@@ -132,6 +132,19 @@ String sxPrettyPrint(SxAtom atom, i64 lineLength);
 void sxContextInit(SxContext* ctx)
 {
     stringTableInit(&ctx->m_symbols, K_KB(16), 256);
+    ctx->m_integers = 0;
+    ctx->m_floats = 0;
+    ctx->m_cells = 0;
+    arenaInit(&ctx->m_scratch, K_KB(1));
+}
+
+void sxContextRelease(SxContext* ctx)
+{
+    stringTableDone(&ctx->m_symbols);
+    poolDone(ctx->m_integers);
+    poolDone(ctx->m_floats);
+    poolDone(ctx->m_cells);
+    arenaDone(&ctx->m_scratch);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
