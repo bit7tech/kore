@@ -602,6 +602,16 @@ bool match(const i8 *regexp, const i8* text);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
+// Console
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+
+void consoleOpen();
+void consolePause();
+void consoleEnableANSIColours();
+
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -609,6 +619,7 @@ bool match(const i8 *regexp, const i8* text);
 // INDEX
 //
 //  ARRAY       Array management
+//  CONSOLE     Console control
 //  CRC32       CRC-32 checksumming
 //  DATA        Data loading
 //  ENTRY       Entry point
@@ -629,6 +640,12 @@ bool match(const i8 *regexp, const i8* text);
 #ifdef K_IMPLEMENTATION
 
 #include <time.h>
+
+#if K_OS_WIN32
+#   include <conio.h>
+#   include <fcntl.h>
+#   include <io.h>
+#endif
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -2107,10 +2124,10 @@ bool pngWrite(const char* fileName, u32* img, int width, int height)
         0x08, 0x06, 0x00, 0x00, 0x00,                           // 8-bit depth, true-colour+alpha format
         0x00, 0x00, 0x00, 0x00,                                 // CRC-32 checksum
                                                                 // IDAT chunk
-                                                                (u8)(dataSize >> 24), (u8)(dataSize >> 16), (u8)(dataSize >> 8), (u8)dataSize,
-                                                                0x49, 0x44, 0x41, 0x54,                                 // 'IDAT'
-                                                                                                                        // Deflate data
-                                                                                                                        0x08, 0x1d,                                             // ZLib CMF, Flags (Compression level 0)
+        (u8)(dataSize >> 24), (u8)(dataSize >> 16), (u8)(dataSize >> 8), (u8)dataSize,
+        0x49, 0x44, 0x41, 0x54,                                 // 'IDAT'
+                                                                // Deflate data
+        0x08, 0x1d,                                             // ZLib CMF, Flags (Compression level 0)
     };
     memoryCopy(header, p, sizeof(header) / sizeof(header[0]));
     u32 crc = crc32(&p[12], 17);
@@ -2273,6 +2290,52 @@ internal bool matchStar(i8 c, const i8* regexp, const i8* text)
     } while (*text != 0 && (*text++ == c || c == '.'));
     return NO;
 }
+
+//----------------------------------------------------------------------------------------------------------------------{CONSOLE}
+//----------------------------------------------------------------------------------------------------------------------
+// Console control
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+
+void consoleOpen()
+{
+#if K_OS_WIN32
+    AllocConsole();
+    SetConsoleTitleA("Debug Window");
+
+    HANDLE handle_out = GetStdHandle(STD_OUTPUT_HANDLE);
+    int hCrt = _open_osfhandle((intptr_t)handle_out, _O_TEXT);
+    FILE* hf_out = _fdopen(hCrt, "w");
+    setvbuf(hf_out, NULL, _IONBF, 1);
+    freopen("CONOUT$", "w", stdout);
+
+    HANDLE handle_in = GetStdHandle(STD_INPUT_HANDLE);
+    hCrt = _open_osfhandle((intptr_t)handle_in, _O_TEXT);
+    FILE* hf_in = _fdopen(hCrt, "r");
+    setvbuf(hf_in, NULL, _IONBF, 0);
+    freopen("CONIN$", "r", stdin);
+#endif
+
+    consoleEnableANSIColours();
+}
+
+void consolePause()
+{
+    printf("\n\033[33;1mPress any key...\033[0m\n\n");
+    _getch();
+}
+
+void consoleEnableANSIColours()
+{
+#if K_OS_WIN32
+    DWORD mode;
+    HANDLE handle_out = GetStdHandle(STD_OUTPUT_HANDLE);
+    GetConsoleMode(handle_out, &mode);
+    mode |= 0x4;
+    SetConsoleMode(handle_out, mode);
+#endif
+}
+
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
