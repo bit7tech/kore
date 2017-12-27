@@ -437,7 +437,7 @@ String arenaStringFormat(Arena* arena, const i8* format, ...);
 //----------------------------------------------------------------------------------------------------------------------
 
 typedef Arena StringTable;
-typedef const i8* StringToken;
+typedef i64 StringToken;
 
 // Initialise a new string table
 void stringTableInit(StringTable* table, i64 size, i64 sizeHashTableSize);
@@ -451,6 +451,9 @@ StringToken stringTableAdd(StringTable* table, const i8* str);
 
 // Add a string view to the table.
 StringToken stringTableAddRange(StringTable* table, const i8* str, const i8* end);
+
+// Convert the token into a string in O(1) time.
+String stringTableGet(StringTable* table, StringToken token);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Path strings
@@ -1189,6 +1192,7 @@ void stringRelease(String str)
 {
     StringHeader* hdr = K_STRING_HEADER(str);
     K_CHECK_STRING(str);
+    if (hdr->refCount == -1) return;
     if (--hdr->refCount == 0)
     {
         K_FREE(hdr, sizeof(StringHeader) + hdr->capacity);
@@ -1365,10 +1369,8 @@ String arenaStringFormat(Arena* arena, const i8* format, ...)
 
 typedef struct
 {
-    i64     nextBlock;
-    i64     length;
-    u64     hash;
-    char    str[0];
+    i64             nextBlock;
+    StringHeader    hdr;
 }
 StringTableHeader;
 
@@ -1395,7 +1397,7 @@ void stringTableDone(StringTable* table)
     arenaDone(table);
 }
 
-internal const i8* __stringTableAdd(StringTable* table, const i8* str, i64 strLen)
+internal StringToken __stringTableAdd(StringTable* table, const i8* str, i64 strLen)
 {
     u8* b = (u8 *)table->start;
     i64* hashTable = K_STRINGTABLE_HASHTABLE(table);
@@ -1408,15 +1410,15 @@ internal const i8* __stringTableAdd(StringTable* table, const i8* str, i64 strLe
     while (*blockPtr != 0)
     {
         StringTableHeader* hdr = (StringTableHeader*)&b[*blockPtr];
-        if (hdr->hash == h)
+        if (hdr->hdr.hash == h)
         {
             // Possible match
-            if (hdr->length == strLen)
+            if (hdr->hdr.size == strLen)
             {
-                if (memoryCompare(str, hdr->str, strLen) == 0)
+                if (memoryCompare(str, hdr->hdr.str, strLen) == 0)
                 {
                     // Found it!
-                    return hdr->str;
+                    return hdr->hdr.str - table->start;
                 }
             }
         }
@@ -1431,14 +1433,18 @@ internal const i8* __stringTableAdd(StringTable* table, const i8* str, i64 strLe
         if (!hdr) return 0;
 
         hdr->nextBlock = 0;
-        hdr->length = strLen;
-        hdr->hash = h;
-        memoryCopy(str, hdr->str, strLen);
-        hdr->str[strLen] = 0;
+
+        hdr->hdr.capacity = strLen + 1;
+        hdr->hdr.hash = h;
+        hdr->hdr.magic = 0xc0deface;
+        hdr->hdr.refCount = -1;
+        hdr->hdr.size = strLen;
+        memoryCopy(str, hdr->hdr.str, strLen);
+        hdr->hdr.str[strLen] = 0;
 
         *blockPtr = (u8 *)hdr - b;
 
-        return hdr->str;
+        return hdr->hdr.str - table->start;
     }
 }
 
@@ -1450,6 +1456,11 @@ StringToken stringTableAdd(StringTable* table, const i8* str)
 StringToken stringTableAddRange(StringTable* table, const i8* str, const i8* end)
 {
     return __stringTableAdd(table, str, (i64)end - (i64)str);
+}
+
+String stringTableGet(StringTable* table, StringToken token)
+{
+    return (String)(table->start + token);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -98,9 +98,9 @@ typedef struct
     //
 
     u64                 m_keywordHashes[PARSER_KEYWORD_HASHTABLE_SIZE];
-    Array(String)       m_keywords;
+    Array(StringToken)  m_keywords;
     Array(i64)          m_keywordLengths;
-    Arena               m_nameStore;
+    StringTable         m_nameStore;
 
     //
     // Operators
@@ -204,7 +204,7 @@ void lexConfigInit(LexConfig* LC)
     for (int i = 0; i < PARSER_KEYWORD_HASHTABLE_SIZE; ++i) LC->m_keywordHashes[i] = 0;
     LC->m_keywords = 0;
     LC->m_keywordLengths = 0;
-    arenaInit(&LC->m_nameStore, K_KB(1));
+    stringTableInit(&LC->m_nameStore, K_KB(4), 128);
     LC->m_operators = 0;
 }
 
@@ -213,7 +213,7 @@ void lexConfigDone(LexConfig* LC)
     arrayDone(LC->m_keywords);
     arrayDone(LC->m_keywordLengths);
     arrayDone(LC->m_operators);
-    arenaDone(&LC->m_nameStore);
+    stringTableDone(&LC->m_nameStore);
 }
 
 void lexConfigInitComments(LexConfig* LC, const i8* lineComment, const i8* blockStartComment, const i8* blockEndComment)
@@ -258,8 +258,9 @@ Token lexConfigAddOperator(LexConfig* LC, const i8* operator)
 
 Token lexConfigAddKeyword(LexConfig* LC, const i8* keyword)
 {
-    String kw = arenaStringCopy(&LC->m_nameStore, keyword);
-    i64 len = stringLength(kw);
+    StringToken kw = stringTableAdd(&LC->m_nameStore, keyword);
+    String kwStr = stringTableGet(&LC->m_nameStore, kw);
+    i64 len = stringLength(kwStr);
 
     i64 keywordIndex = arrayCount(LC->m_keywords);
     K_ASSERT(keywordIndex < 256);
@@ -267,7 +268,7 @@ Token lexConfigAddKeyword(LexConfig* LC, const i8* keyword)
     arrayAdd(LC->m_keywordLengths, len);
 
     // Check to see if we've not run out of room.
-    u64 index = stringHash(kw) & (PARSER_KEYWORD_HASHTABLE_SIZE-1);
+    u64 index = stringHash(kwStr) & (PARSER_KEYWORD_HASHTABLE_SIZE-1);
     K_ASSERT((LC->m_keywordHashes[index] & 0xff00000000000000) == 0);
 
     LC->m_keywordHashes[index] <<= 8;
@@ -478,7 +479,8 @@ internal Token lexNext(Lex* L)
                 if (L->m_config.m_keywordLengths[index] == sizeToken)
                 {
                     // The length of the tokens match with the keywords we're currently checking against.
-                    if (memoryCompare(li->m_s0, L->m_config.m_keywords[index], sizeToken) == 0)
+                    if (memoryCompare(li->m_s0, stringTableGet(&L->m_config.m_nameStore, L->m_config.m_keywords[index]),
+                        sizeToken) == 0)
                     {
                         // It is a keyword
                         return lexBuild(li, (Token)(PARSER_KEYWORD_INDEX + index), pos, 0, 0);
@@ -800,7 +802,7 @@ void lexDump(Lex* L, LexOutputFunc outputFunc)
         else if (li->m_token >= PARSER_KEYWORD_INDEX)
         {
             prefix = "(KEYWORD) ";
-            name = L->m_config.m_keywords[li->m_token - PARSER_KEYWORD_INDEX];
+            name = stringTableGet(&L->m_config.m_nameStore, L->m_config.m_keywords[li->m_token - PARSER_KEYWORD_INDEX]);
         }
         else
         {
@@ -812,7 +814,7 @@ void lexDump(Lex* L, LexOutputFunc outputFunc)
         switch (li->m_token)
         {
         case T_Symbol:
-            outputFunc(arenaStringFormat(&scratch, ": %s", li->m_symbol));
+            outputFunc(arenaStringFormat(&scratch, ": %s", stringTableGet(L->m_symbols, li->m_symbol)));
             break;
 
         case T_Integer:
