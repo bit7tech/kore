@@ -945,7 +945,6 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize)
     i64 oldBytes = a ? elemSize * arrayCount(a) + sizeof(i64) * 2 : 0;
     i64 bytes = elemSize * capacity + sizeof(i64) * 2;
     i64* p = (i64 *)K_REALLOC(a ? __arrayRaw(a) : 0, oldBytes, bytes);
-    printf("REALLOC: (%llu->%llu) = %p -> %p\n", oldBytes, bytes, a ? __arrayRaw(a) : 0, p);
     if (p)
     {
         if (!a) p[1] = 0;
