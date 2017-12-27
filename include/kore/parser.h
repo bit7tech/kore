@@ -6,8 +6,17 @@
 
 #include <kore/kore.h>
 
-#define PARSER_KEYWORD_INDEX 20
-#define PARSER_OPERATOR_INDEX 500
+#if !defined(PARSER_KEYWORD_INDEX)
+#   define PARSER_KEYWORD_INDEX 20
+#endif
+
+#if !defined(PARSER_OPERATOR_INDEX)
+#   define PARSER_OPERATOR_INDEX 500
+#endif
+
+#if !defined(PARSER_KEYWORD_HASHTABLE_SIZE)
+#   define PARSER_KEYWORD_HASHTABLE_SIZE 16
+#endif
 
 //----------------------------------------------------------------------------------------------------------------------
 // Data structures
@@ -88,7 +97,7 @@ typedef struct
     // represent a Token enum that matches that hash.
     //
 
-    u64                 m_keywordHashes[16];
+    u64                 m_keywordHashes[PARSER_KEYWORD_HASHTABLE_SIZE];
     Array(String)       m_keywords;
     Array(i64)          m_keywordLengths;
     Arena               m_nameStore;
@@ -192,11 +201,9 @@ void lexConfigInit(LexConfig* LC)
     LC->m_commentLine = '/';
     LC->m_commentBlock = '*';
     for (int i = 0; i < 128; ++i) LC->m_nameChars[i] = (u8)LNCT_Invalid;
-    for (int i = 0; i < 16; ++i) LC->m_keywordHashes[i] = 0;
+    for (int i = 0; i < PARSER_KEYWORD_HASHTABLE_SIZE; ++i) LC->m_keywordHashes[i] = 0;
     LC->m_keywords = 0;
     LC->m_keywordLengths = 0;
-    arrayAdd(LC->m_keywords, 0);
-    arrayAdd(LC->m_keywordLengths, 0);
     arenaInit(&LC->m_nameStore, K_KB(1));
     LC->m_operators = 0;
 }
@@ -260,7 +267,7 @@ Token lexConfigAddKeyword(LexConfig* LC, const i8* keyword)
     arrayAdd(LC->m_keywordLengths, len);
 
     // Check to see if we've not run out of room.
-    u64 index = stringHash(kw) & 0x0f;
+    u64 index = stringHash(kw) & (PARSER_KEYWORD_HASHTABLE_SIZE-1);
     K_ASSERT((LC->m_keywordHashes[index] & 0xff00000000000000) == 0);
 
     LC->m_keywordHashes[index] <<= 8;
@@ -462,7 +469,7 @@ internal Token lexNext(Lex* L)
             h = hash(li->m_s0, sizeToken);
 
             // Determine if it is a keyword or a symbol
-            tokens = L->m_config.m_keywordHashes[h & 0xf];
+            tokens = L->m_config.m_keywordHashes[h & (PARSER_KEYWORD_HASHTABLE_SIZE-1)];
             while (tokens != 0)
             {
                 int index = (tokens & 0xff);

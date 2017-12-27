@@ -253,7 +253,7 @@ void arenaPop(Arena* arena);
 #define __arrayCount(a) __arrayRaw(a)[1]
 #define __arrayCapacity(a) __arrayRaw(a)[0]
 
-#define __arrayNeedsToGrow(a, n) ((a) == 0 || __arrayCount(a) + (n) >= __arrayCapacity(a))
+#define __arrayNeedsToGrow(a, n) ((a) == 0 || __arrayCount(a) + (n) > __arrayCapacity(a))
 #define __arrayMayGrow(a, n) (__arrayNeedsToGrow(a, (n)) ? __arrayGrow(a, n) : 0)
 #define __arrayGrow(a, n) ((a) = __arrayInternalGrow((a), (n), sizeof(*(a))))
 
@@ -863,11 +863,11 @@ void* arenaAlloc(Arena* arena, i64 size)
     if ((arena->start + arena->cursor + size) > arena->end)
     {
         // We don't have enough room
-        i64 currentSize = (i64)(arena->end - (u8 *)arena);
+        i64 currentSize = (i64)(arena->end - (u8 *)arena->start);
         i64 requiredSize = currentSize + size;
         i64 newSize = currentSize + K_MAX(requiredSize, K_ARENA_INCREMENT);
 
-        u8* newArena = (u8 *)realloc(arena, newSize);
+        u8* newArena = (u8 *)realloc(arena->start, newSize);
 
         if (newArena)
         {
@@ -942,6 +942,7 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize)
     i64 oldBytes = a ? elemSize * arrayCount(a) + sizeof(i64) * 2 : 0;
     i64 bytes = elemSize * capacity + sizeof(i64) * 2;
     i64* p = (i64 *)K_REALLOC(a ? __arrayRaw(a) : 0, oldBytes, bytes);
+    printf("REALLOC: (%llu->%llu) = %p -> %p\n", oldBytes, bytes, a ? __arrayRaw(a) : 0, p);
     if (p)
     {
         if (!a) p[1] = 0;
