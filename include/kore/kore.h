@@ -221,28 +221,28 @@ void arenaPop(Arena* arena);
 
 #define K_ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
-// Destroy an array
+// Destroy an array.
 #define arrayDone(a) ((a) ? K_FREE((u8 *)a - (sizeof(i64) * 2), (sizeof(*a) * __arrayCapacity(a)) + (sizeof(i64) * 2)), 0 : 0)
 
-// Add an element to the end of an array
+// Add an element to the end of an array and return the value.
 #define arrayAdd(a, v) (__arrayMayGrow(a, 1), (a)[__arrayCount(a)++] = (v))
 
-// Return the number of elements in an array
+// Return the number of elements in an array.
 #define arrayCount(a) ((a) ? __arrayCount(a) : 0)
 
-// Add n uninitialised elements to the array
+// Add n uninitialised elements to the array and return the address to the new elements.
 #define arrayExpand(a, n) (__arrayMayGrow(a, n), __arrayCount(a) += (n), &(a)[__arrayCount(a) - (n)])
 
-// Reserve capacity for n extra items to the array
+// Reserve capacity for n extra items to the array.
 #define arrayReserve(a, n) (__arrayMayGrow(a, n))
 
-// Clear the array
+// Clear the array.
 #define arrayClear(a) (arrayCount(a) = 0)
 
-// Delete an array entry
+// Delete an array entry.
 #define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*a)), --__arrayCount(a), (a))
 
-// Index of element
+// Index of element.
 #define arrayIndexOf(a, e) (((e) - (a)) / sizeof(*(a)))
 
 //
@@ -396,6 +396,11 @@ int stringCompare(String s1, const i8* s2);
 
 // String comparison based on hashes.
 bool stringEqual(String s1, String s2);
+
+// Grow a string by appending in place.  The functions will return a new string, the old one will be destroyed.
+String stringGrow(String str1, String str2);
+String stringGrowCStr(String str1, const i8* str2);
+String stringGrowChar(String str, i8 ch);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Arena static strings
@@ -628,10 +633,13 @@ bool pngWrite(const char* fileName, u32* img, int width, int height);
 int match(const i8 *regexp, const i8* text);
 
 // Pre-compiled version of a regular expression
-typedef struct RegEx* RegEx;
+typedef struct RegEx RegEx;
 
 // Generate a pre-compiled version of the regular expression
 RegEx regexCompile(const i8* pattern);
+
+// Release the resources used my compiling the regular expression.
+void regexRelease(RegEx re);
 
 // Use a pre-compiled version of a regular expression for matching
 int regexMatch(RegEx regex, const i8* text);
@@ -1190,6 +1198,34 @@ internal StringHeader* stringAlloc(i64 size)
     return hdr;
 }
 
+internal StringHeader* stringExpand(String str, i64 size)
+{
+    K_CHECK_STRING(str);
+    StringHeader* hdr = K_STRING_HEADER(str);
+    i64 requiredCapacity = hdr->size + size + 1;
+
+    if (requiredCapacity > hdr->capacity)
+    {
+        // We need to resize the memory
+        i64 capacity = hdr->capacity;
+        while (capacity < requiredCapacity) capacity *= 2;
+
+        hdr = K_REALLOC(hdr, hdr->capacity + sizeof(StringHeader), capacity + sizeof(StringHeader));
+        if (hdr)
+        {
+            hdr->capacity = capacity;
+        }
+    }
+
+    if (hdr)
+    {
+        hdr->size += size;
+        hdr->str[hdr->size] = 0;
+    }
+
+    return hdr;
+}
+
 String stringMake(const i8* str)
 {
     i64 size = (i64)strlen(str);
@@ -1236,42 +1272,38 @@ String stringAppend(String str1, String str2)
     K_CHECK_STRING(str1);
     K_CHECK_STRING(str2);
 
+    i64 sizeStr1 = stringLength(str1);
+    i64 sizeStr2 = stringLength(str2);
+    i64 totalSize = sizeStr1 + sizeStr2;
+    StringHeader* s = stringAlloc(totalSize);
+
+    if (s)
     {
-        i64 sizeStr1 = stringLength(str1);
-        i64 sizeStr2 = stringLength(str2);
-        i64 totalSize = sizeStr1 + sizeStr2;
-        StringHeader* s = stringAlloc(totalSize);
-
-        if (s)
-        {
-            memoryCopy(str1, s->str, sizeStr1);
-            memoryCopy(str2, s->str + sizeStr1, sizeStr2);
-            s->hash = hash(s->str, totalSize);
-        }
-
-        return s ? s->str : 0;
+        memoryCopy(str1, s->str, sizeStr1);
+        memoryCopy(str2, s->str + sizeStr1, sizeStr2);
+        s->hash = hash(s->str, totalSize);
     }
+
+    return s ? s->str : 0;
 }
 
 String stringAppendCStr(String str1, const i8* str2)
 {
     K_CHECK_STRING(str1);
 
+    i64 sizeStr1 = stringLength(str1);
+    i64 sizeStr2 = (i64)strlen(str2);
+    i64 totalSize = sizeStr1 + sizeStr2;
+    StringHeader* s = stringAlloc(totalSize);
+
+    if (s)
     {
-        i64 sizeStr1 = stringLength(str1);
-        i64 sizeStr2 = (i64)strlen(str2);
-        i64 totalSize = sizeStr1 + sizeStr2;
-        StringHeader* s = stringAlloc(totalSize);
-
-        if (s)
-        {
-            memoryCopy(str1, s->str, sizeStr1);
-            memoryCopy(str2, s->str + sizeStr1, sizeStr2);
-            s->hash = hash(s->str, totalSize);
-        }
-
-        return s ? s->str : 0;
+        memoryCopy(str1, s->str, sizeStr1);
+        memoryCopy(str2, s->str + sizeStr1, sizeStr2);
+        s->hash = hash(s->str, totalSize);
     }
+
+    return s ? s->str : 0;
 }
 
 i64 stringLength(String str)
@@ -1328,6 +1360,58 @@ bool stringEqual(String s1, String s2)
     }
 
     return YES;
+}
+
+String stringGrow(String str1, String str2)
+{
+    K_CHECK_STRING(str1);
+    K_CHECK_STRING(str2);
+
+    i64 l1 = stringLength(str1);
+    i64 l2 = stringLength(str2);
+
+    StringHeader* hdr = stringExpand(str1, l2);
+    if (hdr)
+    {
+        memoryCopy(str2, hdr->str + l1, l2);
+        hdr->size += l2;
+        hdr->hash = hash(hdr->str, l1 + l2);
+    }
+
+    return hdr ? hdr->str : 0;
+}
+
+String stringGrowCStr(String str1, const i8* str2)
+{
+    K_CHECK_STRING(str1);
+
+    i64 l1 = stringLength(str1);
+    i64 l2 = strlen(str2);
+
+    StringHeader* hdr = stringExpand(str1, l2);
+    if (hdr)
+    {
+        memoryCopy(str2, hdr->str + l1, l2);
+        hdr->size += l2;
+        hdr->hash = hash(hdr->str, l1 + l2);
+    }
+
+    return hdr ? hdr->str : 0;
+}
+
+String stringGrowChar(String str, i8 ch)
+{
+    K_CHECK_STRING(str);
+
+    i64 len = stringLength(str);
+    StringHeader* hdr = stringExpand(str, 1);
+    if (hdr)
+    {
+        hdr->str[len] = ch;
+        hdr->hash = hash(hdr->str, len + 1);
+    }
+
+    return hdr ? hdr->str : 0;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2328,20 +2412,29 @@ typedef enum {
 }
 RegExToken;
 
-struct RegEx
+typedef struct
 {
     RegExToken      type;
     union {
         i8      ch;     // Character
         i8*     ccl;    // Characters in class
     };
+}
+RegExElem;
+
+struct RegEx
+{
+    Array(RegExElem)    m_elems;
+    Array(String)       m_classes;
 };
 
-internal bool regexMatchPattern(RegEx pattern, const i8* text);
+internal void regexInit(RegEx re);
+
+internal bool regexMatchPattern(RegExElem* pattern, const i8* text);
 internal bool regexMatchCharClass(i8 c, const i8* str);
-internal bool regexMatchStar(struct RegEx p, RegEx pattern, const i8* text);
-internal bool regexMatchPlus(struct RegEx p, RegEx pattern, const i8* text);
-internal bool regexMatchOne(struct RegEx p, i8 c);
+internal bool regexMatchStar(RegExElem p, RegExElem* pattern, const i8* text);
+internal bool regexMatchPlus(RegExElem p, RegExElem* pattern, const i8* text);
+internal bool regexMatchOne(RegExElem p, i8 c);
 internal bool regexMatchDigit(i8 c);
 internal bool regexMatchAlpha(i8 c);
 internal bool regexMatchAlphaNum(i8 c);
@@ -2357,11 +2450,15 @@ internal bool regexIsMetaChar(i8 c);
 
 int match(const i8 *regexp, const i8* text)
 {
-    return regexMatch(regexCompile(regexp), text);
+    RegEx re = regexCompile(regexp);
+    int result = regexMatch(re, text);
+    regexRelease(re);
+    return result;
 }
 
-int regexMatch(RegEx regex, const i8* text)
+int regexMatch(RegEx re, const i8* text)
 {
+    RegExElem* regex = re.m_elems;
     if (regex != 0)
     {
         if (regex[0].type == RET_Begin)
@@ -2387,10 +2484,10 @@ int regexMatch(RegEx regex, const i8* text)
 
 RegEx regexCompile(const i8* pattern)
 {
+    struct RegEx re = { 0 };
+    
     // #todo: Move the static to a context.
     // #todo: Change these arrays to dynamic arrays.
-    static struct RegEx compiled[K_MAX_REGEX_OBJECTS];
-    static u8 charClass[K_MAX_CHAR_CLASS_LEN];
     int cclBufIdx = 1;
 
     i8 c;       // Current char in pattern
@@ -2400,15 +2497,16 @@ RegEx regexCompile(const i8* pattern)
     while (pattern[i] != '\0' && (j + 1 < K_MAX_REGEX_OBJECTS))
     {
         c = pattern[i];
+        RegExElem* elem = arrayExpand(re.m_elems, 1);
 
         switch (c)
         {
-        case '^':   compiled[j].type = RET_Begin;           break;
-        case '$':   compiled[j].type = RET_End;             break;
-        case '.':   compiled[j].type = RET_Dot;             break;
-        case '*':   compiled[j].type = RET_Star;            break;
-        case '+':   compiled[j].type = RET_Plus;            break;
-        case '?':   compiled[j].type = RET_QuestionMark;    break;
+        case '^':   elem->type = RET_Begin;             break;
+        case '$':   elem->type = RET_End;               break;
+        case '.':   elem->type = RET_Dot;               break;
+        case '*':   elem->type = RET_Star;              break;
+        case '+':   elem->type = RET_Plus;              break;
+        case '?':   elem->type = RET_QuestionMark;      break;
 
         case '\\':
             {
@@ -2417,25 +2515,25 @@ RegEx regexCompile(const i8* pattern)
                     ++i;
                     switch (pattern[i])
                     {
-                    case 'd':   compiled[j].type = RET_Digit;           break;
-                    case 'D':   compiled[j].type = RET_NonDigit;        break;
-                    case 'w':   compiled[j].type = RET_Alpha;           break;
-                    case 'W':   compiled[j].type = RET_NonAlpha;        break;
-                    case 's':   compiled[j].type = RET_Whitespace;      break;
-                    case 'S':   compiled[j].type = RET_NonWhitespace;   break;
-                    case 'x':   compiled[j].type = RET_Hex;             break;
-                    case 'X':   compiled[j].type = RET_NonHex;          break;
+                    case 'd':   elem->type = RET_Digit;             break;
+                    case 'D':   elem->type = RET_NonDigit;          break;
+                    case 'w':   elem->type = RET_Alpha;             break;
+                    case 'W':   elem->type = RET_NonAlpha;          break;
+                    case 's':   elem->type = RET_Whitespace;        break;
+                    case 'S':   elem->type = RET_NonWhitespace;     break;
+                    case 'x':   elem->type = RET_Hex;               break;
+                    case 'X':   elem->type = RET_NonHex;            break;
 
                     default:
-                        compiled[j].type = RET_Char;
-                        compiled[j].ch = pattern[i];
+                        elem->type = RET_Char;
+                        elem->ch = pattern[i];
                     }
                 }
                 else
                 {
                     // '\' was the last character in our expression - just assume it's a '\'
-                    compiled[j].type = RET_Char;
-                    compiled[j].ch = pattern[i];
+                    elem->type = RET_Char;
+                    elem->ch = pattern[i];
                 }
             }
             break;
@@ -2445,38 +2543,46 @@ RegEx regexCompile(const i8* pattern)
                 int bufBegin = cclBufIdx;
                 if (pattern[i + 1] == '^')
                 {
-                    compiled[j].type = RET_InvCharClass;
+                    elem->type = RET_InvCharClass;
                     ++i;
                 }
                 else
                 {
-                    compiled[j].type = RET_CharClass;
+                    elem->type = RET_CharClass;
                 }
 
+                String* cc = arrayExpand(re.m_classes, 1);
+                *cc = stringMake("");
                 while ((pattern[++i] != ']') && (pattern[i] != 0))
                 {
-                    // #todo: Use dynamic arrays to fix this problem
-                    // #todo: Actually this can be replaced with a simple string
-                    K_ASSERT(cclBufIdx < K_MAX_CHAR_CLASS_LEN);
-                    charClass[cclBufIdx++] = pattern[i];
+                    *cc = stringGrowChar(*cc, pattern[i]);
                 }
-                K_ASSERT(cclBufIdx < K_MAX_CHAR_CLASS_LEN);
-                charClass[cclBufIdx++] = 0;
-                compiled[j].ccl = &charClass[bufBegin];
+                elem->ccl = *cc;
             }
             break;
 
         default:
-            compiled[j].type = RET_Char;
-            compiled[j].ch = c;
+            elem->type = RET_Char;
+            elem->ch = c;
         }
 
         ++i;
         ++j;
     }
 
-    compiled[j].type = RET_Unused;
-    return (RegEx)compiled;
+    RegExElem* elem = arrayExpand(re.m_elems, 1);
+    elem->type = RET_Unused;
+    return re;
+}
+
+void regexRelease(RegEx re)
+{
+    arrayDone(re.m_elems);
+    for (i64 i = 0; i < arrayCount(re.m_classes); ++i)
+    {
+        stringRelease(re.m_classes[i]);
+    }
+    arrayDone(re.m_classes);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2572,7 +2678,7 @@ internal bool regexMatchCharClass(i8 c, const i8* str)
     return NO;
 }
 
-internal bool regexMatchOne(struct RegEx p, i8 c)
+internal bool regexMatchOne(RegExElem p, i8 c)
 {
     switch (p.type)
     {
@@ -2591,7 +2697,7 @@ internal bool regexMatchOne(struct RegEx p, i8 c)
     }
 }
 
-internal bool regexMatchStar(struct RegEx p, RegEx pattern, const i8* text)
+internal bool regexMatchStar(RegExElem p, RegExElem* pattern, const i8* text)
 {
     do 
     {
@@ -2602,7 +2708,7 @@ internal bool regexMatchStar(struct RegEx p, RegEx pattern, const i8* text)
     return NO;
 }
 
-internal bool regexMatchPlus(struct RegEx p, RegEx pattern, const i8* text)
+internal bool regexMatchPlus(RegExElem p, RegExElem* pattern, const i8* text)
 {
     while ((text[0] != 0) && regexMatchOne(p, *text++))
     {
@@ -2612,7 +2718,7 @@ internal bool regexMatchPlus(struct RegEx p, RegEx pattern, const i8* text)
     return NO;
 }
 
-internal bool regexMatchPattern(RegEx pattern, const i8* text)
+internal bool regexMatchPattern(RegExElem* pattern, const i8* text)
 {
     do 
     {
