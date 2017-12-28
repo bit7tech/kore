@@ -597,11 +597,44 @@ bool pngWrite(const char* fileName, u32* img, int width, int height);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
-// Simple pattern matching
+// Regular Expressions
 //----------------------------------------------------------------------------------------------------------------------
+// Inspired by Rob Pike's simple regex code and Kokke's code at https://github.com/kokke/tiny-regex-c
 //----------------------------------------------------------------------------------------------------------------------
 
-bool match(const i8 *regexp, const i8* text);
+#define K_NO_MATCH -1
+
+// This function is very BASIC.  Matches using these symbols:
+//
+//      .           matches any single character
+//      ^           matches beginning of input string
+//      $           matches end of input string
+//      *           matches zero or more occurrences of the previous character (greedy)
+//      +           matches one or more (greedy)
+//      ?           matches zero or one (non-greedy)
+//      [abc]       matches one of a, b, or c
+//      [^abc]      matches anything but a, b or c (broken)
+//      [a-zA-z]    matches character ranges
+//      \s          whitespace (\t, \f, \r, \n, \v, spaces)
+//      \S          non-whitespace
+//      \w          C-based Alphanumeric [a-zA-Z0-9_]
+//      \W          Non c-based alphanumeric
+//      \d          Digits, [0-9]
+//      \D          Non-digits
+//      \x          Hexadecimal digits, [0-9a-fA-F]
+//      \X          Non-hexadecimal digits
+//
+// Returns the position where the match was found or K_NO_MATCH if not match was found.
+int match(const i8 *regexp, const i8* text);
+
+// Pre-compiled version of a regular expression
+typedef struct RegEx* RegEx;
+
+// Generate a pre-compiled version of the regular expression
+RegEx regexCompile(const i8* pattern);
+
+// Use a pre-compiled version of a regular expression for matching
+int regexMatch(RegEx regex, const i8* text);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -628,11 +661,11 @@ void consoleEnableANSIColours();
 //  ENTRY       Entry point
 //  HASH        Fast hashing
 //  MEMORY      Memory management
-//  PATTERN     Pattern matching
 //  PLATFORM    Platform-specific code
 //  PNG         Simple uncompressed PNG output (for debugging)
 //  POOL        Memory pools
 //  RANDOM      Random number generation
+//  REGEX       Regular expressions
 //  SHA1        SHA-1 checksumming
 //  SPAWN       Process spawning API
 //  STRING      String processing, arena strings, paths and string tables
@@ -2264,41 +2297,332 @@ bool pngWrite(const char* fileName, u32* img, int width, int height)
     }
 }
 
-//----------------------------------------------------------------------------------------------------------------------{PATTERN}
+//----------------------------------------------------------------------------------------------------------------------{REGEX}
 //----------------------------------------------------------------------------------------------------------------------
 // Simple pattern matching
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 
-internal bool matchHere(const i8* regexp, const i8* text);
-internal bool matchStar(i8 c, const i8* regexp, const i8* text);
+#define K_MAX_REGEX_OBJECTS     30      // Maximum number of regular expression symbols in expression
+#define K_MAX_CHAR_CLASS_LEN    40      // Max length of character-class buffer
 
-bool match(const i8 *regexp, const i8* text)
+typedef enum {
+    RET_Unused,
+    RET_Dot,
+    RET_Begin,
+    RET_End,
+    RET_QuestionMark,
+    RET_Star,
+    RET_Plus,
+    RET_Char,
+    RET_CharClass,
+    RET_InvCharClass,
+    RET_Digit,
+    RET_NonDigit,
+    RET_Alpha,
+    RET_NonAlpha,
+    RET_Whitespace,
+    RET_NonWhitespace,
+    RET_Hex,
+    RET_NonHex,
+}
+RegExToken;
+
+struct RegEx
 {
-    if (regexp[0] == '^')
+    RegExToken      type;
+    union {
+        i8      ch;     // Character
+        i8*     ccl;    // Characters in class
+    };
+};
+
+internal bool regexMatchPattern(RegEx pattern, const i8* text);
+internal bool regexMatchCharClass(i8 c, const i8* str);
+internal bool regexMatchStar(struct RegEx p, RegEx pattern, const i8* text);
+internal bool regexMatchPlus(struct RegEx p, RegEx pattern, const i8* text);
+internal bool regexMatchOne(struct RegEx p, i8 c);
+internal bool regexMatchDigit(i8 c);
+internal bool regexMatchAlpha(i8 c);
+internal bool regexMatchAlphaNum(i8 c);
+internal bool regexMatchHex(i8 c);
+internal bool regexMatchWhitespace(i8 c);
+internal bool regexMatchMetaChar(i8 c, const i8* str);
+internal bool regexMatchRange(i8 c, const i8* str);
+internal bool regexIsMetaChar(i8 c);
+
+//----------------------------------------------------------------------------------------------------------------------
+// Public functions
+//----------------------------------------------------------------------------------------------------------------------
+
+int match(const i8 *regexp, const i8* text)
+{
+    return regexMatch(regexCompile(regexp), text);
+}
+
+int regexMatch(RegEx regex, const i8* text)
+{
+    if (regex != 0)
     {
-        return matchHere(regexp + 1, text);
+        if (regex[0].type == RET_Begin)
+        {
+            // Make sure the rest of the pattern matches the rest of the text
+            return (regexMatchPattern(&regex[1], text) ? 0 : -1);
+        }
+        else
+        {
+            int idx = -1;
+
+            do
+            {
+                ++idx;
+                if (regexMatchPattern(regex, text)) return idx;
+            }
+            while (*text++ != 0);
+        }
     }
-    do {
-        if (matchHere(regexp, text)) return YES;
-    } while (*text++ != 0);
+
+    return -1;
+}
+
+RegEx regexCompile(const i8* pattern)
+{
+    // #todo: Move the static to a context.
+    // #todo: Change these arrays to dynamic arrays.
+    static struct RegEx compiled[K_MAX_REGEX_OBJECTS];
+    static u8 charClass[K_MAX_CHAR_CLASS_LEN];
+    int cclBufIdx = 1;
+
+    i8 c;       // Current char in pattern
+    int i = 0;  // Index into pattern
+    int j = 0;  // Index into compiled
+
+    while (pattern[i] != '\0' && (j + 1 < K_MAX_REGEX_OBJECTS))
+    {
+        c = pattern[i];
+
+        switch (c)
+        {
+        case '^':   compiled[j].type = RET_Begin;           break;
+        case '$':   compiled[j].type = RET_End;             break;
+        case '.':   compiled[j].type = RET_Dot;             break;
+        case '*':   compiled[j].type = RET_Star;            break;
+        case '+':   compiled[j].type = RET_Plus;            break;
+        case '?':   compiled[j].type = RET_QuestionMark;    break;
+
+        case '\\':
+            {
+                if (pattern[i+1] != 0)
+                {
+                    ++i;
+                    switch (pattern[i])
+                    {
+                    case 'd':   compiled[j].type = RET_Digit;           break;
+                    case 'D':   compiled[j].type = RET_NonDigit;        break;
+                    case 'w':   compiled[j].type = RET_Alpha;           break;
+                    case 'W':   compiled[j].type = RET_NonAlpha;        break;
+                    case 's':   compiled[j].type = RET_Whitespace;      break;
+                    case 'S':   compiled[j].type = RET_NonWhitespace;   break;
+                    case 'x':   compiled[j].type = RET_Hex;             break;
+                    case 'X':   compiled[j].type = RET_NonHex;          break;
+
+                    default:
+                        compiled[j].type = RET_Char;
+                        compiled[j].ch = pattern[i];
+                    }
+                }
+                else
+                {
+                    // '\' was the last character in our expression - just assume it's a '\'
+                    compiled[j].type = RET_Char;
+                    compiled[j].ch = pattern[i];
+                }
+            }
+            break;
+
+        case '[':
+            {
+                int bufBegin = cclBufIdx;
+                if (pattern[i + 1] == '^')
+                {
+                    compiled[j].type = RET_InvCharClass;
+                    ++i;
+                }
+                else
+                {
+                    compiled[j].type = RET_CharClass;
+                }
+
+                while ((pattern[++i] != ']') && (pattern[i] != 0))
+                {
+                    // #todo: Use dynamic arrays to fix this problem
+                    // #todo: Actually this can be replaced with a simple string
+                    K_ASSERT(cclBufIdx < K_MAX_CHAR_CLASS_LEN);
+                    charClass[cclBufIdx++] = pattern[i];
+                }
+                K_ASSERT(cclBufIdx < K_MAX_CHAR_CLASS_LEN);
+                charClass[cclBufIdx++] = 0;
+                compiled[j].ccl = &charClass[bufBegin];
+            }
+            break;
+
+        default:
+            compiled[j].type = RET_Char;
+            compiled[j].ch = c;
+        }
+
+        ++i;
+        ++j;
+    }
+
+    compiled[j].type = RET_Unused;
+    return (RegEx)compiled;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Internal RE functions
+//----------------------------------------------------------------------------------------------------------------------
+
+// #todo: Pull these out for more general utility functions
+internal bool regexMatchDigit(i8 c)
+{
+    return K_BOOL((c >= '0') && (c <= '9'));
+}
+
+internal bool regexMatchHex(i8 c)
+{
+    return K_BOOL(regexMatchDigit(c) ||
+                  (c >= 'a') && (c <= 'f') ||
+                  (c >= 'A') && (c <= 'F'));
+}
+
+internal bool regexMatchAlpha(i8 c)
+{
+    return K_BOOL((c >= 'a') && (c <= 'z') ||
+                  (c >= 'A') && (c <= 'Z'));
+}
+
+internal bool regexMatchAlphaNum(i8 c)
+{
+    return K_BOOL((c == '_') || regexMatchAlpha(c) || regexMatchDigit(c));
+}
+
+internal bool regexMatchWhitespace(i8 c)
+{
+    return K_BOOL(c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v');
+}
+
+internal bool regexMatchRange(i8 c, const i8* str)
+{
+    return ((c != '-') && (str[0] != '\0') && (str[0] != '-') &&
+        (str[1] == '-') &&
+        (str[2] != '\0') && ((c >= str[0]) && (c <= str[2])));
+}
+
+internal bool regexIsMetaChar(i8 c)
+{
+    return K_BOOL((c == 'd') ||
+                  (c == 'D') ||
+                  (c == 's') ||
+                  (c == 'S') ||
+                  (c == 'w') ||
+                  (c == 'W') ||
+                  (c == 'x') ||
+                  (c == 'X'));
+}
+
+internal bool regexMatchMetaChar(i8 c, const i8* str)
+{
+    switch (str[0])
+    {
+    case 'd':   return regexMatchDigit(c);
+    case 'D':   return !regexMatchDigit(c);
+    case 's':   return regexMatchWhitespace(c);
+    case 'S':   return !regexMatchWhitespace(c);
+    case 'w':   return regexMatchAlphaNum(c);
+    case 'W':   return !regexMatchAlphaNum(c);
+    case 'x':   return regexMatchHex(c);
+    case 'X':   return !regexMatchHex(c);
+    default:    return K_BOOL(c == str[0]);
+    }
+}
+
+internal bool regexMatchCharClass(i8 c, const i8* str)
+{
+    do 
+    {
+        if (regexMatchRange(c, str)) return YES;
+        else if (str[0] == '\\')
+        {
+            ++str;
+            if (regexMatchMetaChar(c, str)) return YES;
+            else if ((c == str[0]) && !regexIsMetaChar(c)) return YES;
+        }
+        else if (c == str[0])
+        {
+            if (c == '-')
+            {
+                return K_BOOL((str[-1] == 0) || (str[1] == 0));
+            }
+            else return YES;
+        }
+    }
+    while (*str++ != 0);
+
     return NO;
 }
 
-internal bool matchHere(const i8* regexp, const i8* text)
+internal bool regexMatchOne(struct RegEx p, i8 c)
 {
-    if (regexp[0] == 0) return YES;
-    if (regexp[1] == '*') return matchStar(regexp[0], regexp + 2, text);
-    if (regexp[0] == '$' && regexp[1] == 0) return K_BOOL(*text == 0);
-    if (*text != 0 && (regexp[0] == '.' || regexp[0] == *text)) return matchHere(regexp + 1, text + 1);
+    switch (p.type)
+    {
+    case RET_Dot:               return YES;
+    case RET_CharClass:         return regexMatchCharClass(c, p.ccl);
+    case RET_InvCharClass:      return !regexMatchCharClass(c, p.ccl);
+    case RET_Digit:             return regexMatchDigit(c);
+    case RET_NonDigit:          return !regexMatchDigit(c);
+    case RET_Hex:               return regexMatchHex(c);
+    case RET_NonHex:            return !regexMatchHex(c);
+    case RET_Alpha:             return regexMatchAlphaNum(c);
+    case RET_NonAlpha:          return !regexMatchAlphaNum(c);
+    case RET_Whitespace:        return regexMatchWhitespace(c);
+    case RET_NonWhitespace:     return !regexMatchWhitespace(c);
+    default:                    return (p.ch == c);
+    }
+}
+
+internal bool regexMatchStar(struct RegEx p, RegEx pattern, const i8* text)
+{
+    do 
+    {
+        if (regexMatchPattern(pattern, text)) return YES;
+    }
+    while ((text[0] != 0) && regexMatchOne(p, *text++));
+
     return NO;
 }
 
-internal bool matchStar(i8 c, const i8* regexp, const i8* text)
+internal bool regexMatchPlus(struct RegEx p, RegEx pattern, const i8* text)
 {
-    do {
-        if (matchHere(regexp, text)) return YES;
-    } while (*text != 0 && (*text++ == c || c == '.'));
+    while ((text[0] != 0) && regexMatchOne(p, *text++))
+    {
+        if (regexMatchPattern(pattern, text)) return YES;
+    }
+
+    return NO;
+}
+
+internal bool regexMatchPattern(RegEx pattern, const i8* text)
+{
+    do 
+    {
+        if ((pattern[0].type == RET_Unused) || (pattern[1].type == RET_QuestionMark)) return YES;
+        else if (pattern[1].type == RET_Star) return regexMatchStar(pattern[0], &pattern[2], text);
+        else if (pattern[1].type == RET_Plus) return regexMatchPlus(pattern[0], &pattern[2], text);
+        else if ((pattern[0].type == RET_End) && pattern[1].type == RET_Unused) return (text[0] == 0);
+    }
+    while ((text[0] != 0) && regexMatchOne(*pattern++, *text++));
+
     return NO;
 }
 
