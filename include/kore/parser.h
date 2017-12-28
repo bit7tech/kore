@@ -22,6 +22,8 @@
 // Data structures
 //----------------------------------------------------------------------------------------------------------------------
 
+// NOTE: If you add any entries here, please edit lexDump.
+
 typedef enum
 {
     T_Unknown,
@@ -29,6 +31,7 @@ typedef enum
     T_EOF,
 
     // Literals
+    T_NewLine,
     T_Symbol,
     T_Integer,
     T_Real,
@@ -74,9 +77,10 @@ typedef struct
     //      2 = '*'
     //
 
-    char    m_comment0;     // First character for both types of comments (line-based and block)
-    char    m_commentLine;  // Second character for line-based comments
-    char    m_commentBlock; // Second character for block comments.
+    char    m_comment0;         // First character for both types of comments (line-based and block)
+    char    m_commentLine;      // Second character for line-based comments
+    char    m_commentBlock;     // Second character for block comments.
+    bool    m_trackNewLines;    // If set to YES, newline tokens are returned.
 
     //
     // Symbol or keyword characters
@@ -200,6 +204,7 @@ void lexConfigInit(LexConfig* LC)
     LC->m_comment0 = '/';
     LC->m_commentLine = '/';
     LC->m_commentBlock = '*';
+    LC->m_trackNewLines = NO;
     for (int i = 0; i < 128; ++i) LC->m_nameChars[i] = (u8)LNCT_Invalid;
     for (int i = 0; i < PARSER_KEYWORD_HASHTABLE_SIZE; ++i) LC->m_keywordHashes[i] = 0;
     LC->m_keywords = 0;
@@ -384,7 +389,7 @@ internal Token lexNext(Lex* L)
     {
         if (0 == c) return T_EOF;
 
-        if (iswspace(c))
+        if ((c == '\n' && !L->m_config.m_trackNewLines) || (c != '\n' && iswspace(c)))
         {
             c = lexNextChar(L);
             continue;
@@ -454,10 +459,19 @@ internal Token lexNext(Lex* L)
         li->m_s1 = L->m_cursor;
 
         //--------------------------------------------------------------------------------------------------------------
+        // Check for newlines
+        //--------------------------------------------------------------------------------------------------------------
+
+        if (c == '\n')
+        {
+            return lexBuild(li, T_NewLine, pos, 0, 0);
+        }
+
+        //--------------------------------------------------------------------------------------------------------------
         // Check for symbols and keywords
         //--------------------------------------------------------------------------------------------------------------
 
-        if (L->m_config.m_nameChars[c] == LNCT_Valid)
+        else if (L->m_config.m_nameChars[c] == LNCT_Valid)
         {
             i64 sizeToken = 0;
             u64 h = 0;
@@ -780,6 +794,7 @@ void lexDump(Lex* L, LexOutputFunc outputFunc)
         "UNKNOWN",
         "ERROR",
         "EOF",
+        "NEWLINE",
         "SYMBOL",
         "INTEGER",
         "REAL",
