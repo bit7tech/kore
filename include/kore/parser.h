@@ -106,7 +106,7 @@ typedef struct
     // Operators
     //
 
-    Array(String)       m_operators;
+    Array(StringToken)  m_operators;
 }
 LexConfig;
 
@@ -250,7 +250,8 @@ void lexConfigSetNameCharsString(LexConfig* LC, LexNameCharType type, const i8* 
 
 Token lexConfigAddOperator(LexConfig* LC, const i8* operator)
 {
-    String op = arenaStringCopy(&LC->m_nameStore, operator);
+    StringToken op = stringTableAdd(&LC->m_nameStore, operator);
+    String opStr = stringTableGet(&LC->m_nameStore, op);
     i64 index = arrayCount(LC->m_operators);
     arrayAdd(LC->m_operators, op);
     return (int)(index + PARSER_OPERATOR_INDEX);
@@ -710,7 +711,7 @@ internal Token lexNext(Lex* L)
 
         for (i64 i = 0; i < arrayCount(L->m_config.m_operators); ++i)
         {
-            String op = L->m_config.m_operators[i];
+            String op = stringTableGet(&L->m_config.m_nameStore, L->m_config.m_operators[i]);
             const i8* opScan = op;
             const i8* srcScan = li->m_s0;
 
@@ -797,7 +798,7 @@ void lexDump(Lex* L, LexOutputFunc outputFunc)
         if (li->m_token >= PARSER_OPERATOR_INDEX)
         {
             prefix = "(OPERATOR) ";
-            name = L->m_config.m_operators[li->m_token - PARSER_OPERATOR_INDEX];
+            name = stringTableGet(&L->m_config.m_nameStore, L->m_config.m_operators[li->m_token - PARSER_OPERATOR_INDEX]);
         }
         else if (li->m_token >= PARSER_KEYWORD_INDEX)
         {
