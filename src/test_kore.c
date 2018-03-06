@@ -5,7 +5,9 @@
 #define K_IMPLEMENTATION
 #include <kore/kore.h>
 #include <kore/kgl.h>
+#include <kore/kui.h>
 #include <kore/parser.h>
+
 
 //----------------------------------------------------------------------------------------------------------------------
 // Main entry point
@@ -13,6 +15,22 @@
 
 int kmain(int argc, char** argv)
 {
+    Window wnd = {
+        0,
+        "Test Window",                  // title
+        { { 10, 10 }, { 100, 100 } }    // bounds
+    };
+
+    windowApply(&wnd);
+    WindowEvent ev;
+
+    while (windowPoll(&wnd, &ev))
+    {
+
+    }
+
+    windowDone(&wnd);
+
     return 0;
 }
 

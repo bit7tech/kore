@@ -1021,7 +1021,7 @@ internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize)
         i64* newP = (i64 *)K_REALLOC(p ? __poolRaw(p) : 0, oldBytes, bytes);
         if (newP)
         {
-            u8* b = (u8 *)newP + 2;
+            u8* b = (u8 *)(newP + 2);
             if (!p) newP[0] = capacity;
             for (i64 i = oldCapacity; i < capacity; ++i)
             {
