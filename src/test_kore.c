@@ -15,21 +15,37 @@
 
 int kmain(int argc, char** argv)
 {
-    Window wnd = {
-        0,
-        "Test Window",                  // title
-        { { 10, 10 }, { 100, 100 } }    // bounds
+    Window wnd1 = {
+        K_CREATE_HANDLE,
+        "Test Window 1",                // title
+        { { 50, 50 }, { 800, 600 } }    // bounds
+    };
+    Window wnd2 = {
+        K_CREATE_HANDLE,
+        "Test Window 2",                // title
+        { { 200, 200 },{ 800, 600 } }   // bounds
     };
 
-    windowApply(&wnd);
+    consoleOpen();
+
+    windowApply(&wnd1);
+    windowApply(&wnd2);
     WindowEvent ev;
 
-    while (windowPoll(&wnd, &ev))
+    for(;;)
     {
-
+        while (windowPoll(&ev))
+        {
+            if (ev.type == K_EVENT_QUIT) goto quit;
+        }
     }
+    quit:
 
-    windowDone(&wnd);
+    windowUpdate(&wnd1);
+    windowDone(&wnd1);
+    windowDone(&wnd2);
+
+    printf("Final window width = %d\n", wnd1.bounds.size.cx);
 
     return 0;
 }

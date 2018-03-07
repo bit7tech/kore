@@ -147,6 +147,8 @@ typedef char        bool;
 
 #define internal static
 
+#define K_ZERO(d) memset(&(d), 0, sizeof(d))
+
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 // Memory API
@@ -268,7 +270,7 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
 #define poolDone(p) arrayDone(p)
 
 // Allocate an element from the pool - return index
-#define poolAcquire(p) poolIndexOf((p), __poolInternalAcquire((p), (p) ? __poolCapacity(p) : 1, sizeof(*(p))))
+#define poolAcquire(p) poolIndexOf((p), __poolInternalAcquire((p), (p) ? __poolCapacity(p) : 1, sizeof(*(p)), &(p)))
 
 // Release an element back to the pool
 #define poolRecycle(p, i) __poolInternalRecycle((p), (i), sizeof(*(p)))
@@ -284,7 +286,7 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
 #define __poolFreeList(p) __poolRaw(p)[1]
 #define __poolCapacity(p) __poolRaw(p)[0]
 
-internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize);
+internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP);
 internal void __poolInternalRecycle(void* p, i64 index, i64 elemSize);
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1004,7 +1006,7 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize)
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 
-internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize)
+internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP)
 {
     // Test for capacity
     // If this assert triggers, the element size is too small for a pool.
@@ -1021,8 +1023,9 @@ internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize)
         i64* newP = (i64 *)K_REALLOC(p ? __poolRaw(p) : 0, oldBytes, bytes);
         if (newP)
         {
+            newP[0] = capacity;
+            if (!p) newP[1] = 0;
             u8* b = (u8 *)(newP + 2);
-            if (!p) newP[0] = capacity;
             for (i64 i = oldCapacity; i < capacity; ++i)
             {
                 *(i64 *)(&b[i * elemSize]) = i + 1;
@@ -1041,6 +1044,7 @@ internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize)
     i64 newIndex = __poolFreeList(p);
     i64* b64 = (i64 *)&b[newIndex * elemSize];
     __poolFreeList(p) = *b64;
+    *outP = p;
     return b64;
 }
 

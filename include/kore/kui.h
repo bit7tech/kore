@@ -31,9 +31,11 @@ typedef struct
 }
 Rect;
 
+#define K_CREATE_HANDLE (-1)
+
 typedef struct  
 {
-    int         handle;
+    int         handle;         // Initialise this with K_CREATE_HANDLE on first pass to windowApply().
     String      title;
     Rect        bounds;
     Size        imageSize;      // Image is stretched to window size
@@ -41,9 +43,13 @@ typedef struct
 }
 Window;
 
+#define K_EVENT_NONE    0
+#define K_EVENT_QUIT    1
+
 typedef struct 
 {
-    int         type;
+    int         type;           // One of the K_EVENT_??? defines.
+    int         handle;         // Window handle creating the event.
 }
 WindowEvent;
 
@@ -54,7 +60,7 @@ WindowEvent;
 void windowApply(Window* window);
 void windowUpdate(Window* window);
 void windowDone(Window* window);
-bool windowPoll(Window* window, WindowEvent* event);
+bool windowPoll(WindowEvent* event);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -81,14 +87,17 @@ typedef struct
 WindowInfo;
 
 Pool(WindowInfo) g_windows = 0;
+int g_windowCount = 0;
+int g_createdWindowCount = 0;
 
 internal WindowInfo* _windowGet(int handle)
 {
-    if (0 == handle)
+    if (K_CREATE_HANDLE == handle)
     {
         // Allocate a new handle
-        i64 i = poolIndexOf(g_windows, poolAcquire(g_windows));
+        i64 i = poolAcquire(g_windows);
         g_windows[i].window.handle = (int)i;
+        ++g_windowCount;
         return &g_windows[i];
     }
     else
@@ -100,6 +109,11 @@ internal WindowInfo* _windowGet(int handle)
 internal void _windowDestroy(WindowInfo* info)
 {
     poolRecycle(g_windows, poolIndexOf(g_windows, info));
+    if (--g_windowCount == 0)
+    {
+        poolDone(g_windows);
+        PostQuitMessage(0);
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -117,6 +131,7 @@ ATOM g_windowClassAtom = 0;
 
 internal void _windowResizeImage(WindowInfo* wci, int width, int height)
 {
+    K_ZERO(wci->bitmapInfo.bmiHeader);
     wci->bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     wci->bitmapInfo.bmiHeader.biWidth = width;
     wci->bitmapInfo.bmiHeader.biHeight = -height;
@@ -134,6 +149,7 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         WindowInfo* info = _windowGet(wci->handle);
         info->win32Handle = wnd;
         SetWindowLongA(wnd, 0, (LONG)wci->handle);
+        ++g_createdWindowCount;
 
         // Initialise the associated image
         _windowResizeImage(info, info->window.imageSize.cx, info->window.imageSize.cy);
@@ -171,7 +187,9 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             break;
 
         case WM_DESTROY:
-            info->win32Handle = INVALID_HANDLE_VALUE;
+            //info->win32Handle = INVALID_HANDLE_VALUE;
+            info->window.handle = K_CREATE_HANDLE;
+            if (0 == --g_createdWindowCount) PostQuitMessage(0);
             break;
 
         default:
@@ -184,8 +202,9 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
 
 internal WindowInfo* _windowCreate(Window* wnd)
 {
-    WindowInfo* info = _windowGet(0);
+    WindowInfo* info = _windowGet(K_CREATE_HANDLE);
     wnd->handle = info->window.handle;
+    info->window = *wnd;
 
     if (!g_windowClassAtom)
     {
@@ -202,7 +221,9 @@ internal WindowInfo* _windowCreate(Window* wnd)
         g_windowClassAtom = RegisterClassExA(&wc);
     }
 
-    RECT r = { wnd->bounds.origin.x, wnd->bounds.origin.y, wnd->bounds.size.cx, wnd->bounds.size.cy };
+    RECT r = { wnd->bounds.origin.x, wnd->bounds.origin.y,
+        wnd->bounds.origin.x + wnd->bounds.size.cx,
+        wnd->bounds.origin.y + wnd->bounds.size.cy };
     int style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
     AdjustWindowRect(&r, style, FALSE);
 
@@ -224,7 +245,7 @@ void windowApply(Window* window)
 {
     WindowInfo* info = 0;
 
-    if (window->handle == 0)
+    if (window->handle == K_CREATE_HANDLE)
     {
         // We need to create the window
         info = _windowCreate(window);
@@ -241,7 +262,8 @@ void windowApply(Window* window)
 
 void windowUpdate(Window* window)
 {
-    // TODO: update window to current state
+    WindowInfo* info = _windowGet(window->handle);
+    *window = info->window;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -250,13 +272,16 @@ void windowUpdate(Window* window)
 
 void windowDone(Window* window)
 {
-    if (window->handle)
+    if (window->handle != K_CREATE_HANDLE)
     {
         WindowInfo* info = _windowGet(window->handle);
 #if K_OS_WIN32
-        SendMessageA(info->win32Handle, WM_DESTROY, 0, 0);
+        if (info->win32Handle != INVALID_HANDLE_VALUE)
+        {
+            SendMessageA(info->win32Handle, WM_DESTROY, 0, 0);
+        }
 #endif
-        window->handle = 0;
+        window->handle = K_CREATE_HANDLE;
         _windowDestroy(info);
     }
 }
@@ -265,25 +290,35 @@ void windowDone(Window* window)
 // Poll
 //----------------------------------------------------------------------------------------------------------------------
 
-bool windowPoll(Window* window, WindowEvent* event)
+bool windowPoll(WindowEvent* event)
 {
-    if (window->handle)
-    {
-        MSG msg;
-        WindowInfo* info = _windowGet(window->handle);
-
 #if K_OS_WIN32
-        if (PeekMessageA(&msg, info->win32Handle, 0, 0, PM_REMOVE))
+    MSG msg;
+    if (PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE))
+    {
+        if (GetClassLongA(msg.hwnd, GCW_ATOM) == g_windowClassAtom)
         {
-            TranslateMessage(&msg);
-            DispatchMessageA(&msg);
-
-            // TODO: Initialise event
-
-            return YES;
+            event->handle = GetWindowLongA(msg.hwnd, 0);
         }
-#endif
+        if (!GetMessageA(&msg, 0, 0, 0))
+        {
+            event->type = K_EVENT_QUIT;
+            return YES;
+        };
+
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+
+        switch (msg.message)
+        {
+        default:
+            event->type = K_EVENT_NONE;
+            break;
+        }
+
+        return YES;
     }
+#endif
 
     return NO;
 }
