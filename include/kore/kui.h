@@ -40,6 +40,7 @@ typedef struct
     Rect        bounds;
     Size        imageSize;      // Image is stretched to window size
     u32*        image;          // 2D bitmap of image in RGBA format
+    Size        sizeSnap;       // The size snap that allows the window to be resized to a grid.
 }
 Window;
 
@@ -57,10 +58,11 @@ WindowEvent;
 // Window API
 //----------------------------------------------------------------------------------------------------------------------
 
-void windowApply(Window* window);
-void windowUpdate(Window* window);
-void windowDone(Window* window);
-bool windowPoll(WindowEvent* event);
+void windowInit(Window* window);        // Set a window to default parameters.
+void windowApply(Window* window);       // Apply the parameters to a window or create a new one.
+void windowUpdate(Window* window);      // Update window structure to reflect current OS state of window.
+void windowDone(Window* window);        // Destroy window.
+bool windowPoll(WindowEvent* event);    // Obtain events from the window.
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -236,6 +238,25 @@ internal WindowInfo* _windowCreate(Window* wnd)
     return info;
 }
 #endif
+
+//----------------------------------------------------------------------------------------------------------------------
+// Init
+//----------------------------------------------------------------------------------------------------------------------
+
+void windowInit(Window* window)
+{
+    window->handle = K_CREATE_HANDLE;
+    window->title = 0;
+    window->bounds.origin.x = 10;
+    window->bounds.origin.y = 10;
+    window->bounds.size.cx = 800;
+    window->bounds.size.cy = 600;
+    window->imageSize.cx = 0;
+    window->imageSize.cy = 0;
+    window->image = 0;
+    window->sizeSnap.cx = 1;
+    window->sizeSnap.cy = 1;
+}
 
 //----------------------------------------------------------------------------------------------------------------------
 // Apply
