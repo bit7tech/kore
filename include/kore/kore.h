@@ -224,7 +224,7 @@ void arenaPop(Arena* arena);
 #define K_ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
 // Destroy an array.
-#define arrayDone(a) ((a) ? K_FREE((u8 *)a - (sizeof(i64) * 2), (sizeof(*a) * __arrayCapacity(a)) + (sizeof(i64) * 2)), 0 : 0)
+#define arrayDone(a) ((a) = ((a) ? K_FREE((u8 *)a - (sizeof(i64) * 2), (sizeof(*a) * __arrayCapacity(a)) + (sizeof(i64) * 2)), (void *)0 : (void *)0))
 
 // Add an element to the end of an array and return the value.
 #define arrayAdd(a, v) (__arrayMayGrow(a, 1), (a)[__arrayCount(a)++] = (v))
@@ -234,6 +234,9 @@ void arenaPop(Arena* arena);
 
 // Add n uninitialised elements to the array and return the address to the new elements.
 #define arrayExpand(a, n) (__arrayMayGrow(a, n), __arrayCount(a) += (n), &(a)[__arrayCount(a) - (n)])
+
+// Set the final size of the array a to n
+#define arrayResize(a, n) (((a) == 0 || __arrayCount(a) < (n)) ? arrayExpand(a, (n) - ((a) ? __arrayCount(a) : 0)) : ((__arrayCount(a) = (n)), (a)))
 
 // Reserve capacity for n extra items to the array.
 #define arrayReserve(a, n) (__arrayMayGrow(a, n))
@@ -378,8 +381,8 @@ String stringReserve(i64 len, i8 ch);
 // Create a string from a byte range determined by a start and finish.
 String stringMakeRange(const i8* start, const i8* end);
 
-// Release a string back to memory.
-void stringRelease(String str);
+// Release a string back to memory.  It will also null the string variable.
+void stringDone(String* str);
 
 // Create a new string by appending it to another.
 String stringAppend(String str1, String str2);
@@ -795,21 +798,21 @@ extern int kmain(int argc, char** argv);
 
 int main(int argc, char** argv)
 {
+#if K_DEBUG
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+
     return kmain(argc, argv);
 }
 
 #if K_OS_WIN32
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prevInst, LPSTR cmdLine, int cmdShow)
 {
-    int result = kmain(__argc, __argv);
-
-#ifdef K_DEBUG
-    if (_CrtDumpMemoryLeaks())
-    {
-        MessageBoxA(0, "Memory leaks found!", "ERROR", MB_ICONERROR | MB_OK);
-    }
+#if K_DEBUG
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
+    int result = kmain(__argc, __argv);
     return result;
 }
 #endif
@@ -1260,15 +1263,16 @@ String stringMakeRange(const i8* start, const i8* end)
     return hdr ? hdr->str : 0;
 }
 
-void stringRelease(String str)
+void stringDone(String* str)
 {
-    StringHeader* hdr = K_STRING_HEADER(str);
-    K_CHECK_STRING(str);
+    StringHeader* hdr = K_STRING_HEADER(*str);
+    K_CHECK_STRING(*str);
     if (hdr->refCount == -1) return;
     if (--hdr->refCount == 0)
     {
         K_FREE(hdr, sizeof(StringHeader) + hdr->capacity);
     }
+    *str = 0;
 }
 
 String stringAppend(String str1, String str2)
@@ -2584,7 +2588,7 @@ void regexRelease(RegEx re)
     arrayDone(re.m_elems);
     for (i64 i = 0; i < arrayCount(re.m_classes); ++i)
     {
-        stringRelease(re.m_classes[i]);
+        stringDone(&re.m_classes[i]);
     }
     arrayDone(re.m_classes);
 }
