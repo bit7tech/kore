@@ -68,7 +68,7 @@ Rect rectMake(Point p, Size size);
 
 void windowInit(Window* window);        // Set a window to default parameters.
 void windowApply(Window* window);       // Apply the parameters to a window or create a new one.
-void windowUpdate(Window* window);      // Update window structure to reflect current OS state of window.
+void windowUpdate(Window* window);      // Update window structure to reflect current OS state of window and repaint.
 void windowDone(Window* window);        // Destroy window.
 bool windowPoll(WindowEvent* event);    // Obtain events from the window.
 
@@ -306,6 +306,8 @@ void windowApply(Window* window)
     else
     {
         // TODO: Changes
+        WindowInfo* info = _windowGet(window->handle);
+        InvalidateRect(info->win32Handle, 0, 0);
     }
 }
 
