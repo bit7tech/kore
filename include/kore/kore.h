@@ -250,6 +250,9 @@ void arenaPop(Arena* arena);
 // Index of element.
 #define arrayIndexOf(a, e) (((e) - (a)) / sizeof(*(a)))
 
+// Loop through an array an act on the elements.  Use: arrayFor(a) { a[i] = ... }
+#define arrayFor(a) for (int i = 0; i < arrayCount(a); ++i)
+
 //
 // Internal routines
 //
@@ -262,7 +265,7 @@ void arenaPop(Arena* arena);
 #define __arrayMayGrow(a, n) (__arrayNeedsToGrow(a, (n)) ? __arrayGrow(a, n) : 0)
 #define __arrayGrow(a, n) ((a) = __arrayInternalGrow((a), (n), sizeof(*(a))))
 
-internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
+void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Pools
@@ -289,8 +292,8 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
 #define __poolFreeList(p) __poolRaw(p)[1]
 #define __poolCapacity(p) __poolRaw(p)[0]
 
-internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP);
-internal void __poolInternalRecycle(void* p, i64 index, i64 elemSize);
+void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP);
+void __poolInternalRecycle(void* p, i64 index, i64 elemSize);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -983,7 +986,7 @@ void arenaPop(Arena* arena)
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 
-internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize)
+void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize)
 {
     i64 doubleCurrent = a ? 2 * __arrayCapacity(a) : 0;
     i64 minNeeded = arrayCount(a) + increment;
@@ -1009,7 +1012,7 @@ internal void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize)
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 
-internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP)
+void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP)
 {
     // Test for capacity
     // If this assert triggers, the element size is too small for a pool.
@@ -1051,7 +1054,7 @@ internal void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void*
     return b64;
 }
 
-internal void __poolInternalRecycle(void* p, i64 index, i64 elemSize)
+void __poolInternalRecycle(void* p, i64 index, i64 elemSize)
 {
     u8* b = (u8 *)p;
     i64* b64 = (i64 *)&b[index * elemSize];

@@ -172,8 +172,8 @@ Lex;
 void lexConfigInit(LexConfig* LC);
 void lexConfigDone(LexConfig* LC);
 void lexConfigInitComments(LexConfig* LC, const i8* lineComment, const i8* blockStartComment, const i8* blockEndComment);
-void lexConfigSetNameCharsRange(LexConfig* LC, LexNameCharType type, char start, char end);
-void lexConfigSetNameCharsString(LexConfig* LC, LexNameCharType type, const i8* str);
+void lexConfigAddNameCharsRange(LexConfig* LC, LexNameCharType type, char start, char end);
+void lexConfigAddNameCharsString(LexConfig* LC, LexNameCharType type, const i8* str);
 Token lexConfigAddOperator(LexConfig* LC, const i8* operator);
 Token lexConfigAddKeyword(LexConfig* LC, const i8* keyword);
 
@@ -183,7 +183,7 @@ Token lexConfigAddKeyword(LexConfig* LC, const i8* keyword);
 
 void lex(Lex* L, LexConfig* config, LexOutputFunc outputFunc, StringTable* symbols, String source, const i8* start, const i8* end);
 void lexDone(Lex* L);
-void lexDump(Lex* L, LexOutputFunc outputFunc);
+void lexDump(Lex* L);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -237,7 +237,7 @@ void lexConfigInitComments(LexConfig* LC, const i8* lineComment, const i8* block
     LC->m_commentBlock = blockStartComment[1];
 }
 
-void lexConfigSetNameCharsRange(LexConfig* LC, LexNameCharType type, char start, char end)
+void lexConfigAddNameCharsRange(LexConfig* LC, LexNameCharType type, char start, char end)
 {
     for (char i = start; i <= end; ++i)
     {
@@ -245,7 +245,7 @@ void lexConfigSetNameCharsRange(LexConfig* LC, LexNameCharType type, char start,
     }
 }
 
-void lexConfigSetNameCharsString(LexConfig* LC, LexNameCharType type, const i8* str)
+void lexConfigAddNameCharsString(LexConfig* LC, LexNameCharType type, const i8* str)
 {
     for (int i = 0; str[i] != 0; ++i)
     {
@@ -788,7 +788,7 @@ void lex(Lex* L, LexConfig* config, LexOutputFunc outputFunc, StringTable* symbo
     }
 }
 
-void lexDump(Lex* L, LexOutputFunc outputFunc)
+void lexDump(Lex* L)
 {
     const i8* typeNames[] = {
         "UNKNOWN",
@@ -824,25 +824,25 @@ void lexDump(Lex* L, LexOutputFunc outputFunc)
         {
             name = typeNames[li->m_token];
         }
-        outputFunc(arenaStringFormat(&scratch, "%d: %s%s", L->m_info[i].m_position.m_line, prefix, name));
+        L->m_outputFunc(arenaStringFormat(&scratch, "%d: %s%s", L->m_info[i].m_position.m_line, prefix, name));
 
         // Print interpretation of token
         switch (li->m_token)
         {
         case T_Symbol:
-            outputFunc(arenaStringFormat(&scratch, ": %s", stringTableGet(L->m_symbols, li->m_symbol)));
+            L->m_outputFunc(arenaStringFormat(&scratch, ": %s", stringTableGet(L->m_symbols, li->m_symbol)));
             break;
 
         case T_Integer:
-            outputFunc(arenaStringFormat(&scratch, ": %lld", li->m_integer));
+            L->m_outputFunc(arenaStringFormat(&scratch, ": %lld", li->m_integer));
             break;
 
         case T_Real:
-            outputFunc(arenaStringFormat(&scratch, ": %f", li->m_real));
+            L->m_outputFunc(arenaStringFormat(&scratch, ": %f", li->m_real));
             break;
         }
 
-        outputFunc("\n");
+        L->m_outputFunc("\n");
         if (li->m_token > T_EOF)
         {
             int x = li->m_position.m_col - 1;
@@ -855,14 +855,14 @@ void lexDump(Lex* L, LexOutputFunc outputFunc)
             {
                 char c[2] = { 0 };
                 c[0] = *p;
-                outputFunc(c);
+                L->m_outputFunc(c);
             }
 
-            outputFunc("\n");
-            for (int j = 0; j < x; ++j) outputFunc(" ");
-            outputFunc("^");
-            for (int j = 0; j < len - 1; ++j) outputFunc("~");
-            outputFunc("\n");
+            L->m_outputFunc("\n");
+            for (int j = 0; j < x; ++j) L->m_outputFunc(" ");
+            L->m_outputFunc("^");
+            for (int j = 0; j < len - 1; ++j) L->m_outputFunc("~");
+            L->m_outputFunc("\n");
         }
         arenaPop(&scratch);
     }
