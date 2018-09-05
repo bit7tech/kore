@@ -235,6 +235,9 @@ void arenaPop(Arena* arena);
 // Add n uninitialised elements to the array and return the address to the new elements.
 #define arrayExpand(a, n) (__arrayMayGrow(a, n), __arrayCount(a) += (n), &(a)[__arrayCount(a) - (n)])
 
+// Enlarge an array proportional to its size.
+#define arrayEnlarge(a) (arrayExpand((a), (arrayCount(a) / 2)))
+
 // Set the final size of the array a to n
 #define arrayResize(a, n) (((a) == 0 || __arrayCount(a) < (n)) ? arrayExpand(a, (n) - ((a) ? __arrayCount(a) : 0)) : ((__arrayCount(a) = (n)), (a)))
 
@@ -385,7 +388,17 @@ u64 hash(const u8* buffer, i64 len);
 String stringMake(const i8* str);
 
 // Create a string of a set length.
-String stringReserve(i64 len, i8 ch);
+String stringReserve(i64 len);
+
+// Create a string of a set length.
+String stringReserveFill(i64 len, i8 ch);
+
+// Unlock a string for writing.  Usually used after stringReserve is called.  Will assert if the length asked for
+// is greater than the string.
+char* stringLock(String str, i64 len);
+
+// Unlock the string so it can be used again.  Its internal has will be recomputed.
+void stringUnlock(String str);
 
 // Create a string from a byte range determined by a start and finish.
 String stringMakeRange(const i8* start, const i8* end);
@@ -1271,7 +1284,18 @@ String stringMake(const i8* str)
     return stringMakeRange(str, str + size);
 }
 
-String stringReserve(i64 len, i8 ch)
+String stringReserve(i64 len)
+{
+    StringHeader* hdr = stringAlloc(len);
+    if (hdr)
+    {
+        hdr->hash = 0;
+    }
+
+    return hdr ? hdr->str : 0;
+}
+
+String stringReserveFill(i64 len, i8 ch)
 {
     StringHeader* hdr = stringAlloc(len);
     if (hdr)
@@ -1281,6 +1305,23 @@ String stringReserve(i64 len, i8 ch)
     }
 
     return hdr ? hdr->str : 0;
+}
+
+char* stringLock(String str, i64 len)
+{
+    K_CHECK_STRING(str);
+    K_ASSERT(len <= stringLength(str));
+    K_STRING_HEADER(str)->refCount += 1;
+    return (char *)str;
+}
+
+void stringUnlock(String str)
+{
+    K_CHECK_STRING(str);
+    StringHeader* hdr = K_STRING_HEADER(str);
+    K_ASSERT(hdr->refCount > 1);
+    hdr->hash = hash(hdr->str, hdr->size);
+    --hdr->refCount;
 }
 
 String stringMakeRange(const i8* start, const i8* end)
@@ -2100,7 +2141,7 @@ void sha1Finalise(Sha1* s)
 
 String sha1Hex(Sha1* s)
 {
-    String str = stringReserve(40, ' ');
+    String str = stringReserveFill(40, ' ');
 
     for (int i = 0; i < 20; ++i)
     {
