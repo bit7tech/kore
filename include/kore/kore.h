@@ -314,6 +314,9 @@ TimePoint timeNow();
 // Return a time period representing the time between time points.
 TimePeriod timePeriod(TimePoint a, TimePoint b);
 
+// Return a time representing an addition of two time periods.
+TimePeriod timeAdd(TimePeriod a, TimePeriod b);
+
 // Advance a time point by a time period.
 TimePoint timeFuture(TimePoint t, TimePeriod p);
 
@@ -334,6 +337,9 @@ void timeWaitFor(TimePeriod time);
 
 // Block until a time point
 void timeWaitUntil(TimePoint time);
+
+// Compare two periods and return -1, 0 or +1 depending on whether a < b, a == b or a > b
+int timeCompare(TimePeriod a, TimePeriod b);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -785,6 +791,29 @@ void timeWaitUntil(TimePoint time)
 {
     TimePeriod t = { 0 };
     while ((t = timeNow()).QuadPart < time.QuadPart);
+}
+
+TimePeriod timeAdd(TimePeriod a, TimePeriod b)
+{
+    LARGE_INTEGER t;
+    t.QuadPart = a.QuadPart + b.QuadPart;
+    return t;
+}
+
+int timeCompare(TimePeriod a, TimePeriod b)
+{
+    if (a.QuadPart < b.QuadPart)
+    {
+        return -1;
+    }
+    else if (a.QuadPart > b.QuadPart)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
 }
 
 #else
