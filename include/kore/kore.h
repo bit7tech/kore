@@ -112,6 +112,12 @@
 // Break on the nth allocation.
 void debugBreakOnAlloc(int n);
 
+// Output a message to the debugger.
+void log(const char* format, ...);
+
+// Output a message to the debugger using a varaiable argument list.
+void logv(const char* format, va_list args);
+
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 // Basic types and definitions
@@ -512,6 +518,9 @@ String pathReplaceExtension(String path, const char* ext);
 // Join two paths together, the second must be a relative path.
 String pathJoin(String p1, String p2);
 
+// Return the path of the executable.
+String pathExe();
+
 //----------------------------------------------------------------------------------------------------------------------
 // String utilities
 //
@@ -727,6 +736,32 @@ void debugBreakOnAlloc(int n)
 #endif
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
+void log(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    logv(format, args);
+
+    va_end(args);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+internal char gLogBuffer[1024];
+
+void logv(const char* format, va_list args)
+{
+    vsnprintf(gLogBuffer, 1024, format, args);
+#if K_OS_WIN32
+    OutputDebugStringA(gLogBuffer);
+#else
+    printf("%s", gLogBuffer);
+#endif
+}
+
 //----------------------------------------------------------------------------------------------------------------------{TIME}
 //----------------------------------------------------------------------------------------------------------------------
 // Time Management
@@ -841,12 +876,15 @@ int timeCompare(TimePeriod a, TimePeriod b)
 
 extern int kmain(int argc, char** argv);
 
+internal const char* gExePath = 0;
+
 int main(int argc, char** argv)
 {
 #if K_DEBUG
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
+    gExePath = argv[0];
     return kmain(argc, argv);
 }
 
@@ -856,6 +894,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prevInst, LPSTR cmdLine, int cmdSho
 #if K_DEBUG
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
+
+    gExePath = __argv[0];
 
     int result = kmain(__argc, __argv);
     return result;
@@ -1718,6 +1758,14 @@ String pathReplaceExtension(String path, const char* ext)
 String pathJoin(String p1, String p2)
 {
     return stringFormat("%s/%s", p1, p2);
+}
+
+String pathExe()
+{
+    String exePath = stringMake(gExePath);
+    String result = pathDirectory(exePath);
+    stringDone(&exePath);
+    return result;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
