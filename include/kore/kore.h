@@ -113,10 +113,10 @@
 void debugBreakOnAlloc(int n);
 
 // Output a message to the debugger.
-void log(const char* format, ...);
+void pr(const char* format, ...);
 
 // Output a message to the debugger using a varaiable argument list.
-void logv(const char* format, va_list args);
+void prv(const char* format, va_list args);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -741,12 +741,12 @@ void debugBreakOnAlloc(int n)
 
 //----------------------------------------------------------------------------------------------------------------------
 
-void log(const char* format, ...)
+void pr(const char* format, ...)
 {
     va_list args;
     va_start(args, format);
 
-    logv(format, args);
+    prv(format, args);
 
     va_end(args);
 }
@@ -755,7 +755,7 @@ void log(const char* format, ...)
 
 internal char gLogBuffer[1024];
 
-void logv(const char* format, va_list args)
+void prv(const char* format, va_list args)
 {
     vsnprintf(gLogBuffer, 1024, format, args);
 #if K_OS_WIN32
