@@ -35,17 +35,18 @@ Rect;
 
 typedef struct  
 {
-    int         handle;         // Initialise this with K_CREATE_HANDLE on first pass to windowApply().
-    String      title;
-    Rect        bounds;
-    Size        imageSize;      // Image is stretched to window size
-    u32*        image;          // 2D bitmap of image in RGBA format
-    Size        sizeSnap;       // The size snap that allows the window to be resized to a grid.
+    int                 handle;         // Initialise this with K_CREATE_HANDLE on first pass to windowApply().
+    String              title;
+    Rect                bounds;
+    Size                imageSize;      // Image is stretched to window size
+    u32*                image;          // 2D bitmap of image in RGBA format
+    Size                sizeSnap;       // The size snap that allows the window to be resized to a grid.
 }
 Window;
 
 #define K_EVENT_NONE    0
 #define K_EVENT_QUIT    1
+#define K_EVENT_CLOSE   2
 
 typedef struct 
 {
@@ -71,6 +72,9 @@ void windowApply(Window* window);       // Apply the parameters to a window or c
 void windowUpdate(Window* window);      // Update window structure to reflect current OS state of window and repaint.
 void windowDone(Window* window);        // Destroy window.
 bool windowPoll(WindowEvent* event);    // Obtain events from the window.
+void windowAddEvent(Window* window, const WindowEvent* event);  // Add an event to window event queue.
+void windowAddGlobalEvent(const WindowEvent* event);            // Add an event not related to a window or referred
+                                                                // window is destroyed.
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -117,12 +121,17 @@ typedef struct
     HWND        win32Handle;
     BITMAPINFO  bitmapInfo;
 #endif
+
+    Array(WindowEvent)  events;
 }
 WindowInfo;
 
 Pool(WindowInfo) g_windows = 0;
 int g_windowCount = 0;
 int g_createdWindowCount = 0;
+Array(WindowEvent) g_globalEvents = 0;
+
+//----------------------------------------------------------------------------------------------------------------------
 
 internal WindowInfo* _windowGet(int handle)
 {
@@ -131,6 +140,7 @@ internal WindowInfo* _windowGet(int handle)
         // Allocate a new handle
         i64 i = poolAcquire(g_windows);
         g_windows[i].window.handle = (int)i;
+        g_windows[i].events = 0;
         ++g_windowCount;
         return &g_windows[i];
     }
@@ -140,12 +150,20 @@ internal WindowInfo* _windowGet(int handle)
     }
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 internal void _windowDestroy(WindowInfo* info)
 {
+    arrayDone(info->events);
     poolRecycle(g_windows, poolIndexOf(g_windows, info));
     if (--g_windowCount == 0)
     {
         poolDone(g_windows);
+        if (arrayCount(g_windows) == 0)
+        {
+            arrayDone(g_windows);
+            g_windows = 0;
+        }
         PostQuitMessage(0);
     }
 }
@@ -190,7 +208,10 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
     }
     else
     {
-        WindowInfo* info = &g_windows[GetWindowLongA(wnd, 0)];
+        int handle = (int)GetWindowLongA(wnd, 0);
+        WindowInfo* info = &g_windows[handle];
+        WindowEvent ev = { 0 };
+        ev.handle = handle;
 
         switch (msg)
         {
@@ -217,7 +238,9 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             break;
 
         case WM_CLOSE:
-            DestroyWindow(wnd);
+            windowDone(&info->window);
+            ev.type = K_EVENT_CLOSE;
+            windowAddGlobalEvent(&ev);
             break;
 
         case WM_DESTROY:
@@ -347,6 +370,9 @@ void windowDone(Window* window)
 
 bool windowPoll(WindowEvent* event)
 {
+    event->type = K_EVENT_NONE;
+
+    // Get the events from the OS - this will queue up events on windows or the global queue.
 #if K_OS_WIN32
     MSG msg;
     if (PeekMessageA(&msg, 0, 0, 0, PM_NOREMOVE))
@@ -363,19 +389,50 @@ bool windowPoll(WindowEvent* event)
 
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
-
-        switch (msg.message)
-        {
-        default:
-            event->type = K_EVENT_NONE;
-            break;
-        }
-
-        return YES;
     }
 #endif
 
+    // Scan the known windows for any events.
+    poolFor(g_windows) {
+        WindowInfo* info = &g_windows[i];
+        if (arrayCount(info->events) > 0)
+        {
+            *event = info->events[0];
+            arrayDelete(info->events, 0);
+            return YES;
+        }
+    }
+
+    // Scan the global events.
+    if (arrayCount(g_globalEvents) > 0)
+    {
+        *event = g_globalEvents[0];
+        arrayDelete(g_globalEvents, 0);
+        if (arrayCount(g_globalEvents) == 0)
+        {
+            arrayDone(g_globalEvents);
+            g_globalEvents = 0;
+        }
+        return YES;
+    }
+
     return NO;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+void windowAddEvent(Window* window, const WindowEvent* event)
+{
+    K_ASSERT(window->handle != K_CREATE_HANDLE);
+    WindowInfo* info = _windowGet(window->handle);
+    *arrayExpand(info->events, 1) = *event;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+void windowAddGlobalEvent(const WindowEvent* event)
+{
+    *arrayExpand(g_globalEvents, 1) = *event;
 }
 
 //----------------------------------------------------------------------------------------------------------------------

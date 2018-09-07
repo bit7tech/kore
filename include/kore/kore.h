@@ -293,6 +293,9 @@ void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
 // Index of an element
 #define poolIndexOf(p, e) ((i64)((u8 *)(e) - (u8 *)(p)) / sizeof(*(p)))
 
+// Enumerate a pool whose first field is an i64.
+#define poolFor(p) for (int i = 0; i < arrayCount(p); ++i) if (*(i64 *)&p[i] == -1)
+
 //
 // Internal routines
 //
@@ -1132,6 +1135,7 @@ void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP)
     i64 newIndex = __poolFreeList(p);
     i64* b64 = (i64 *)&b[newIndex * elemSize];
     __poolFreeList(p) = *b64;
+    *b64 = -1;
     *outP = p;
     return b64;
 }
