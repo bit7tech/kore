@@ -254,7 +254,10 @@ void arenaPop(Arena* arena);
 #define arrayClear(a) (arrayCount(a) = 0)
 
 // Delete an array entry.
-#define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*a)), --__arrayCount(a), (a))
+#define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), --__arrayCount(a), (a))
+
+// Insert an element.
+#define arrayInsert(a, i) (arrayExpand((a),1), memoryMove(&(a)[(i)], &(a)[(i)+1], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), ++__arrayCount(a), (a) + (i))
 
 // Index of element.
 #define arrayIndexOf(a, e) (((e) - (a)) / sizeof(*(a)))
