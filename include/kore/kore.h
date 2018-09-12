@@ -235,6 +235,9 @@ void arenaPop(Arena* arena);
 // Add an element to the end of an array and return the value.
 #define arrayAdd(a, v) (__arrayMayGrow(a, 1), (a)[__arrayCount(a)++] = (v))
 
+// Expand the array by 1 at the end and return the address.
+#define arrayNew(a) arrayExpand((a), 1)
+
 // Return the number of elements in an array.
 #define arrayCount(a) ((a) ? __arrayCount(a) : 0)
 
@@ -257,13 +260,16 @@ void arenaPop(Arena* arena);
 #define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), --__arrayCount(a), (a))
 
 // Insert an element.
-#define arrayInsert(a, i) (arrayExpand((a),1), memoryMove(&(a)[(i)], &(a)[(i)+1], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), ++__arrayCount(a), (a) + (i))
+#define arrayInsert(a, i) (arrayExpand((a),1), memoryMove(&(a)[(i)], &(a)[(i)+1], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), (a) + (i))
 
 // Index of element.
 #define arrayIndexOf(a, e) (((e) - (a)) / sizeof(*(a)))
 
 // Loop through an array an act on the elements.  Use: arrayFor(a) { a[i] = ... }
 #define arrayFor(a) for (int i = 0; i < arrayCount(a); ++i)
+
+// Array swap
+#define arraySwap(a, i1, i2) (*arrayNew(a) = (a)[i1], (a)[i1] = (a)[i2], (a)[i2] = (a)[arrayCount(a)-1], --__arrayCount(a))
 
 //
 // Internal routines

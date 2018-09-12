@@ -156,14 +156,10 @@ internal void _windowDestroy(WindowInfo* info)
 {
     arrayDone(info->events);
     poolRecycle(g_windows, poolIndexOf(g_windows, info));
+    stringDone(&info->window.title);
     if (--g_windowCount == 0)
     {
         poolDone(g_windows);
-        if (arrayCount(g_windows) == 0)
-        {
-            arrayDone(g_windows);
-            g_windows = 0;
-        }
         PostQuitMessage(0);
     }
 }
@@ -278,11 +274,13 @@ internal WindowInfo* _windowCreate(Window* wnd)
         g_windowClassAtom = RegisterClassExA(&wc);
     }
 
-    RECT r = { wnd->bounds.origin.x, wnd->bounds.origin.y,
-        wnd->bounds.origin.x + wnd->bounds.size.cx,
-        wnd->bounds.origin.y + wnd->bounds.size.cy };
+    RECT r = { 0, 0, wnd->bounds.size.cx, wnd->bounds.size.cy };
     int style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
     AdjustWindowRect(&r, style, FALSE);
+    r.right += -r.left + wnd->bounds.origin.x;
+    r.bottom += -r.top + wnd->bounds.origin.y;
+    r.left = wnd->bounds.origin.x;
+    r.top = wnd->bounds.origin.y;
 
     WindowCreateInfo wci;
     wci.handle = wnd->handle;
@@ -354,13 +352,16 @@ void windowDone(Window* window)
     {
         WindowInfo* info = _windowGet(window->handle);
 #if K_OS_WIN32
-        if (info->win32Handle != INVALID_HANDLE_VALUE)
+        if (info)
         {
-            SendMessageA(info->win32Handle, WM_DESTROY, 0, 0);
+            if (info->win32Handle != INVALID_HANDLE_VALUE)
+            {
+                SendMessageA(info->win32Handle, WM_DESTROY, 0, 0);
+            }
         }
 #endif
         window->handle = K_CREATE_HANDLE;
-        _windowDestroy(info);
+        if (info) _windowDestroy(info);
     }
 }
 
