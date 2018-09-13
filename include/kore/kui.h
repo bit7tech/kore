@@ -40,13 +40,16 @@ typedef struct
     Rect                bounds;
     Size                imageSize;      // Image is stretched to window size
     u32*                image;          // 2D bitmap of image in RGBA format
+
+    bool                resizeable;     // YES if window can be resized.
     Size                sizeSnap;       // The size snap that allows the window to be resized to a grid.
 }
 Window;
 
-#define K_EVENT_NONE    0
-#define K_EVENT_QUIT    1
-#define K_EVENT_CLOSE   2
+#define K_EVENT_NONE    (0)
+#define K_EVENT_QUIT    (1)
+#define K_EVENT_CLOSE   (2)
+#define K_EVENT_SIZE    (3)
 
 typedef struct 
 {
@@ -115,7 +118,8 @@ Rect rectMake(Point p, Size size)
 
 typedef struct
 {
-    Window      window;       // Current state
+    i64         poolIndex;      // Used so that poolFor works.
+    Window      window;         // Current state
 
 #if K_OS_WIN32
     HWND        win32Handle;
@@ -186,6 +190,8 @@ internal void _windowResizeImage(WindowInfo* wci, int width, int height)
     wci->bitmapInfo.bmiHeader.biPlanes = 1;
     wci->bitmapInfo.bmiHeader.biBitCount = 32;
     wci->bitmapInfo.bmiHeader.biClrImportant = BI_RGB;
+    wci->window.imageSize.cx = width;
+    wci->window.imageSize.cy = height;
 }
 
 internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
@@ -216,6 +222,8 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             {
                 info->window.bounds.size.cx = LOWORD(l);
                 info->window.bounds.size.cy = HIWORD(l);
+                ev.type = K_EVENT_SIZE;
+                windowAddEvent(&info->window, &ev);
             }
             break;
 
@@ -240,7 +248,6 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             break;
 
         case WM_DESTROY:
-            //info->win32Handle = INVALID_HANDLE_VALUE;
             info->window.handle = K_CREATE_HANDLE;
             if (0 == --g_createdWindowCount) PostQuitMessage(0);
             break;
@@ -276,6 +283,10 @@ internal WindowInfo* _windowCreate(Window* wnd)
 
     RECT r = { 0, 0, wnd->bounds.size.cx, wnd->bounds.size.cy };
     int style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
+    if (wnd->resizeable)
+    {
+        style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+    }
     AdjustWindowRect(&r, style, FALSE);
     r.right += -r.left + wnd->bounds.origin.x;
     r.bottom += -r.top + wnd->bounds.origin.y;
@@ -307,6 +318,7 @@ void windowInit(Window* window)
     window->imageSize.cx = 0;
     window->imageSize.cy = 0;
     window->image = 0;
+    window->resizeable = NO;
     window->sizeSnap.cx = 1;
     window->sizeSnap.cy = 1;
 }
@@ -328,6 +340,17 @@ void windowApply(Window* window)
     {
         // TODO: Changes
         WindowInfo* info = _windowGet(window->handle);
+
+        //
+        // Deal with image changes
+        //
+        if ((info->window.imageSize.cx != window->imageSize.cx) ||
+            (info->window.imageSize.cy != window->imageSize.cy))
+        {
+            _windowResizeImage(info, window->imageSize.cx, window->imageSize.cy);
+        }
+        info->window.image = window->image;
+
         InvalidateRect(info->win32Handle, 0, 0);
     }
 }
