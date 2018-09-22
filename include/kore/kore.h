@@ -112,6 +112,12 @@
 // Break on the nth allocation.
 void debugBreakOnAlloc(int n);
 
+// Output a message to the debugger.
+void pr(const char* format, ...);
+
+// Output a message to the debugger using a varaiable argument list.
+void prv(const char* format, va_list args);
+
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 // Basic types and definitions
@@ -231,11 +237,17 @@ void arenaPop(Arena* arena);
 // Add an element to the end of an array and return the value.
 #define arrayAdd(a, v) (__arrayMayGrow(a, 1), (a)[__arrayCount(a)++] = (v))
 
+// Expand the array by 1 at the end and return the address.
+#define arrayNew(a) arrayExpand((a), 1)
+
 // Return the number of elements in an array.
 #define arrayCount(a) ((a) ? __arrayCount(a) : 0)
 
 // Add n uninitialised elements to the array and return the address to the new elements.
 #define arrayExpand(a, n) (__arrayMayGrow(a, n), __arrayCount(a) += (n), &(a)[__arrayCount(a) - (n)])
+
+// Enlarge an array proportional to its size.
+#define arrayEnlarge(a) (arrayExpand((a), (arrayCount(a) / 2)))
 
 // Set the final size of the array a to n
 #define arrayResize(a, n) (((a) == 0 || __arrayCount(a) < (n)) ? arrayExpand(a, (n) - ((a) ? __arrayCount(a) : 0)) : ((__arrayCount(a) = (n)), (a)))
@@ -247,13 +259,19 @@ void arenaPop(Arena* arena);
 #define arrayClear(a) (arrayCount(a) = 0)
 
 // Delete an array entry.
-#define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*a)), --__arrayCount(a), (a))
+#define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), --__arrayCount(a), (a))
+
+// Insert an element.
+#define arrayInsert(a, i) (arrayExpand((a),1), memoryMove(&(a)[(i)], &(a)[(i)+1], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), (a) + (i))
 
 // Index of element.
 #define arrayIndexOf(a, e) (((e) - (a)) / sizeof(*(a)))
 
 // Loop through an array an act on the elements.  Use: arrayFor(a) { a[i] = ... }
 #define arrayFor(a) for (int i = 0; i < arrayCount(a); ++i)
+
+// Array swap
+#define arraySwap(a, i1, i2) (*arrayNew(a) = (a)[i1], (a)[i1] = (a)[i2], (a)[i2] = (a)[arrayCount(a)-1], --__arrayCount(a))
 
 //
 // Internal routines
@@ -286,6 +304,9 @@ void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
 // Index of an element
 #define poolIndexOf(p, e) ((i64)((u8 *)(e) - (u8 *)(p)) / sizeof(*(p)))
 
+// Enumerate a pool whose first field is an i64.
+#define poolFor(p) for (int i = 0; i < arrayCount(p); ++i) if (*(i64 *)&p[i] == -1)
+
 //
 // Internal routines
 //
@@ -316,6 +337,9 @@ TimePoint timeNow();
 // Return a time period representing the time between time points.
 TimePeriod timePeriod(TimePoint a, TimePoint b);
 
+// Return a time representing an addition of two time periods.
+TimePeriod timeAdd(TimePeriod a, TimePeriod b);
+
 // Advance a time point by a time period.
 TimePoint timeFuture(TimePoint t, TimePeriod p);
 
@@ -336,6 +360,9 @@ void timeWaitFor(TimePeriod time);
 
 // Block until a time point
 void timeWaitUntil(TimePoint time);
+
+// Compare two periods and return -1, 0 or +1 depending on whether a < b, a == b or a > b
+int timeCompare(TimePeriod a, TimePeriod b);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -381,7 +408,17 @@ u64 hash(const u8* buffer, i64 len);
 String stringMake(const i8* str);
 
 // Create a string of a set length.
-String stringReserve(i64 len, i8 ch);
+String stringReserve(i64 len);
+
+// Create a string of a set length.
+String stringReserveFill(i64 len, i8 ch);
+
+// Unlock a string for writing.  Usually used after stringReserve is called.  Will assert if the length asked for
+// is greater than the string.
+char* stringLock(String str, i64 len);
+
+// Unlock the string so it can be used again.  Its internal has will be recomputed.
+void stringUnlock(String str);
 
 // Create a string from a byte range determined by a start and finish.
 String stringMakeRange(const i8* start, const i8* end);
@@ -494,6 +531,9 @@ String pathReplaceExtension(String path, const char* ext);
 
 // Join two paths together, the second must be a relative path.
 String pathJoin(String p1, String p2);
+
+// Return the path of the executable.
+String pathExe();
 
 //----------------------------------------------------------------------------------------------------------------------
 // String utilities
@@ -710,6 +750,32 @@ void debugBreakOnAlloc(int n)
 #endif
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
+void pr(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    prv(format, args);
+
+    va_end(args);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+internal char gLogBuffer[1024];
+
+void prv(const char* format, va_list args)
+{
+    vsnprintf(gLogBuffer, 1024, format, args);
+#if K_OS_WIN32
+    OutputDebugStringA(gLogBuffer);
+#else
+    printf("%s", gLogBuffer);
+#endif
+}
+
 //----------------------------------------------------------------------------------------------------------------------{TIME}
 //----------------------------------------------------------------------------------------------------------------------
 // Time Management
@@ -789,6 +855,29 @@ void timeWaitUntil(TimePoint time)
     while ((t = timeNow()).QuadPart < time.QuadPart);
 }
 
+TimePeriod timeAdd(TimePeriod a, TimePeriod b)
+{
+    LARGE_INTEGER t;
+    t.QuadPart = a.QuadPart + b.QuadPart;
+    return t;
+}
+
+int timeCompare(TimePeriod a, TimePeriod b)
+{
+    if (a.QuadPart < b.QuadPart)
+    {
+        return -1;
+    }
+    else if (a.QuadPart > b.QuadPart)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
 #else
 #   error Implement for your platform
 #endif
@@ -801,12 +890,15 @@ void timeWaitUntil(TimePoint time)
 
 extern int kmain(int argc, char** argv);
 
+internal const char* gExePath = 0;
+
 int main(int argc, char** argv)
 {
 #if K_DEBUG
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
+    gExePath = argv[0];
     return kmain(argc, argv);
 }
 
@@ -816,6 +908,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prevInst, LPSTR cmdLine, int cmdSho
 #if K_DEBUG
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
+
+    gExePath = __argv[0];
 
     int result = kmain(__argc, __argv);
     return result;
@@ -1052,6 +1146,7 @@ void* __poolInternalAcquire(void* p, i64 increment, i64 elemSize, void** outP)
     i64 newIndex = __poolFreeList(p);
     i64* b64 = (i64 *)&b[newIndex * elemSize];
     __poolFreeList(p) = *b64;
+    *b64 = -1;
     *outP = p;
     return b64;
 }
@@ -1244,7 +1339,18 @@ String stringMake(const i8* str)
     return stringMakeRange(str, str + size);
 }
 
-String stringReserve(i64 len, i8 ch)
+String stringReserve(i64 len)
+{
+    StringHeader* hdr = stringAlloc(len);
+    if (hdr)
+    {
+        hdr->hash = 0;
+    }
+
+    return hdr ? hdr->str : 0;
+}
+
+String stringReserveFill(i64 len, i8 ch)
 {
     StringHeader* hdr = stringAlloc(len);
     if (hdr)
@@ -1254,6 +1360,23 @@ String stringReserve(i64 len, i8 ch)
     }
 
     return hdr ? hdr->str : 0;
+}
+
+char* stringLock(String str, i64 len)
+{
+    K_CHECK_STRING(str);
+    K_ASSERT(len <= stringLength(str));
+    K_STRING_HEADER(str)->refCount += 1;
+    return (char *)str;
+}
+
+void stringUnlock(String str)
+{
+    K_CHECK_STRING(str);
+    StringHeader* hdr = K_STRING_HEADER(str);
+    K_ASSERT(hdr->refCount > 1);
+    hdr->hash = hash(hdr->str, hdr->size);
+    --hdr->refCount;
 }
 
 String stringMakeRange(const i8* start, const i8* end)
@@ -1650,6 +1773,14 @@ String pathReplaceExtension(String path, const char* ext)
 String pathJoin(String p1, String p2)
 {
     return stringFormat("%s/%s", p1, p2);
+}
+
+String pathExe()
+{
+    String exePath = stringMake(gExePath);
+    String result = pathDirectory(exePath);
+    stringDone(&exePath);
+    return result;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -2073,7 +2204,7 @@ void sha1Finalise(Sha1* s)
 
 String sha1Hex(Sha1* s)
 {
-    String str = stringReserve(40, ' ');
+    String str = stringReserveFill(40, ' ');
 
     for (int i = 0; i < 20; ++i)
     {
