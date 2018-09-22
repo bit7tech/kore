@@ -49,6 +49,10 @@ void sxContextRelease(SxContext* ctx);
 // Creation of primitives
 //----------------------------------------------------------------------------------------------------------------------
 
+SxAtom sxTaggedValue(i64 tag, i64 value);
+SxAtom sxTaggedShiftedValue(i64 tag, i64 value);
+SxAtom sxTaggedPointer(i64 tag, void* ptr);
+
 SxAtom sxNull();
 SxAtom sxInteger(i64 i);
 SxAtom sxFloat(f64 f);
@@ -145,6 +149,35 @@ void sxContextRelease(SxContext* ctx)
     poolDone(ctx->m_floats);
     poolDone(ctx->m_cells);
     arenaDone(&ctx->m_scratch);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Creation of primitives
+//----------------------------------------------------------------------------------------------------------------------
+
+SxAtom sxTaggedValue(i64 tag, i64 value)
+{
+    K_ASSERT((value & 0xf) == 0);
+    K_ASSERT(tag >= 0 && tag < 16);
+    return (value & ~0xf) | tag;
+}
+
+SxAtom sxTaggedShiftedValue(i64 tag, i64 value)
+{
+    K_ASSERT(tag >= 0 && tag < 16);
+    return (value << 4) | tag;
+}
+
+SxAtom sxTaggedPointer(i64 tag, void* ptr)
+{
+    i64 p = K_BITCAST(i64, ptr);
+    K_ASSERT((p & 0xf) == 0);
+    return sxTaggedValue(tag, p);
+}
+
+SxAtom sxNull()
+{
+    return 0;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
