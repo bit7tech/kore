@@ -243,6 +243,9 @@ void arenaPop(Arena* arena);
 // Return the number of elements in an array.
 #define arrayCount(a) ((a) ? __arrayCount(a) : 0)
 
+// Returns a pointer past the end of the array.  Will be invalidated if you change the array.
+#define arrayEnd(a) ((a) + __arrayCount(a))
+
 // Add n uninitialised elements to the array and return the address to the new elements.
 #define arrayExpand(a, n) (__arrayMayGrow(a, n), __arrayCount(a) += (n), &(a)[__arrayCount(a) - (n)])
 
