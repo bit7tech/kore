@@ -185,6 +185,12 @@ void lex(Lex* L, LexConfig* config, LexOutputFunc outputFunc, StringTable* symbo
 void lexDone(Lex* L);
 void lexDump(Lex* L);
 
+//
+// Post analysis information
+//
+
+Array(LexInfo) lexGetTokens(Lex* L);
+
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -213,6 +219,8 @@ void lexConfigInit(LexConfig* LC)
     LC->m_operators = 0;
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 void lexConfigDone(LexConfig* LC)
 {
     arrayDone(LC->m_keywords);
@@ -220,6 +228,8 @@ void lexConfigDone(LexConfig* LC)
     arrayDone(LC->m_operators);
     stringTableDone(&LC->m_nameStore);
 }
+
+//----------------------------------------------------------------------------------------------------------------------
 
 void lexConfigInitComments(LexConfig* LC, const i8* lineComment, const i8* blockStartComment, const i8* blockEndComment)
 {
@@ -237,6 +247,8 @@ void lexConfigInitComments(LexConfig* LC, const i8* lineComment, const i8* block
     LC->m_commentBlock = blockStartComment[1];
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 void lexConfigAddNameCharsRange(LexConfig* LC, LexNameCharType type, char start, char end)
 {
     for (char i = start; i <= end; ++i)
@@ -244,6 +256,8 @@ void lexConfigAddNameCharsRange(LexConfig* LC, LexNameCharType type, char start,
         LC->m_nameChars[i] = (u8)type;
     }
 }
+
+//----------------------------------------------------------------------------------------------------------------------
 
 void lexConfigAddNameCharsString(LexConfig* LC, LexNameCharType type, const i8* str)
 {
@@ -253,6 +267,8 @@ void lexConfigAddNameCharsString(LexConfig* LC, LexNameCharType type, const i8* 
     }
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 Token lexConfigAddOperator(LexConfig* LC, const i8* operator)
 {
     StringToken op = stringTableAdd(&LC->m_nameStore, operator);
@@ -261,6 +277,8 @@ Token lexConfigAddOperator(LexConfig* LC, const i8* operator)
     arrayAdd(LC->m_operators, op);
     return (int)(index + PARSER_OPERATOR_INDEX);
 }
+
+//----------------------------------------------------------------------------------------------------------------------
 
 Token lexConfigAddKeyword(LexConfig* LC, const i8* keyword)
 {
@@ -293,6 +311,8 @@ void lexDone(Lex* L)
     arenaDone(&L->m_scratch);
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 internal char lexNextChar(Lex* L)
 {
     char c;
@@ -321,6 +341,8 @@ internal char lexNextChar(Lex* L)
     return c;
 
 }
+
+//----------------------------------------------------------------------------------------------------------------------
 
 internal void lexUngetChar(Lex* L)
 {
@@ -358,6 +380,8 @@ internal Token lexErrorV(Lex* L, const i8* format, va_list args)
 
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 internal Token lexError(Lex* L, const i8* format, ...)
 {
     va_list args;
@@ -367,6 +391,8 @@ internal Token lexError(Lex* L, const i8* format, ...)
     return T_Error;
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 internal Token lexBuild(LexInfo* li, Token token, LexPos pos, i64 number, StringToken symbol)
 {
     li->m_token = token;
@@ -375,6 +401,8 @@ internal Token lexBuild(LexInfo* li, Token token, LexPos pos, i64 number, String
     li->m_symbol = symbol;
     return token;
 }
+
+//----------------------------------------------------------------------------------------------------------------------
 
 internal Token lexNext(Lex* L)
 {
@@ -762,6 +790,8 @@ internal Token lexNext(Lex* L)
 
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+
 void lex(Lex* L, LexConfig* config, LexOutputFunc outputFunc, StringTable* symbols, String source, const i8* start, const i8* end)
 {
     // Initialise source
@@ -787,6 +817,8 @@ void lex(Lex* L, LexConfig* config, LexOutputFunc outputFunc, StringTable* symbo
 
     }
 }
+
+//----------------------------------------------------------------------------------------------------------------------
 
 void lexDump(Lex* L)
 {
@@ -868,6 +900,13 @@ void lexDump(Lex* L)
     }
 
     arenaDone(&scratch);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+Array(LexInfo) lexGetTokens(Lex* L)
+{
+    return L->m_info;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
