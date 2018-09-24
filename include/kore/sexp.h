@@ -43,7 +43,7 @@ SxContext;
 //----------------------------------------------------------------------------------------------------------------------
 
 void sxContextInit(SxContext* ctx);
-void sxContextRelease(SxContext* ctx);
+void sxContextDone(SxContext* ctx);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Creation of primitives
@@ -142,7 +142,7 @@ void sxContextInit(SxContext* ctx)
     arenaInit(&ctx->m_scratch, K_KB(1));
 }
 
-void sxContextRelease(SxContext* ctx)
+void sxContextDone(SxContext* ctx)
 {
     stringTableDone(&ctx->m_symbols);
     poolDone(ctx->m_integers);
