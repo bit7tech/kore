@@ -62,19 +62,48 @@ SxAtom sxString(const char* string);
 
 void sxRelease(SxAtom atom);
 
+//----------------------------------------------------------------------------------------------------------------------
+// Querying of primitives
+//----------------------------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------------------------
+// Tags allow encoding the type of atom into the actual value.
+//
+//  TAG     TYPE        DESCRIPTION
+//
+//  0000    CELL        Normal address to a SxCell.  If 0, will be interpreted as null.
+//  0001    SYMBOL      Address of symbol in symbols string table.
+//  0010    STRING      Address of string in interned string table.
+//  0011    
+//  0100
+//  0101
+//  0110
+//  0111
+//  1000    INTEGER     60-bit integer
+//  1001    FLOAT       1-bit sign, 11-bit exponent and 48-bit fraction (truncated)
+//  1010
+//  1011
+//  1100
+//  1101
+//  1110
+//  1111
+
+#define K_MIN_SX_INT    ((i64)(u64)0xF800000000000000)
+#define K_MAX_SX_INT    ((i64)(u64)0x07ffffffffffffff)
+#define K_SX_TAGMASK    (0xf)
+#define K_SX_REMOVETAG(x)   ((x) & ~0xf)
+#define K_SX_GETTAG(x)      ((x) & 0xf)
+
 typedef enum
 {
-    // Values
-    SXT_NULL = 0,
-    SXT_SMALL_INTEGER,      // sxGetType() will return SXT_INTEGER
-    SXT_SMALL_FLOAT,        // sxGetType() will return SXT_FLOAT
-
     // Addresses
-    SXT_CELL = 8,
+    SXT_CELL = 0,
     SXT_SYMBOL = 9,
     SXT_STRING = 10,
-    SXT_INTEGER = 11,
-    SXT_FLOAT = 12,
+
+    // Values
+    SXT_INTEGER = 8,
+    SXT_FLOAT,
 }
 SxType;
 
@@ -85,6 +114,16 @@ bool sxIsFloat(SxAtom atom);
 bool sxIsCell(SxAtom atom);
 bool sxIsSymbol(SxAtom atom);
 bool sxIsString(SxAtom atom);
+
+//----------------------------------------------------------------------------------------------------------------------
+// Conversion of primitives
+// Only use sxGet??? functions if sxIs??? are true, otherwise an assertion will fail.
+//----------------------------------------------------------------------------------------------------------------------
+
+i64 sxGetInteger(SxAtom atom);
+f64 sxGetFloat(SxAtom atom);
+const char* sxGetSymbol(SxAtom atom);
+const char* sxGetString(SxAtom atom);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Simple list creation functions
@@ -157,13 +196,14 @@ void sxContextDone(SxContext* ctx)
 
 SxAtom sxTaggedValue(i64 tag, i64 value)
 {
-    K_ASSERT((value & 0xf) == 0);
+    K_ASSERT(K_SX_GETTAG(value) == 0);
     K_ASSERT(tag >= 0 && tag < 16);
-    return (value & ~0xf) | tag;
+    return value | tag;
 }
 
 SxAtom sxTaggedShiftedValue(i64 tag, i64 value)
 {
+    K_ASSERT(value >= K_MIN_SX_INT && value <= K_MAX_SX_INT);
     K_ASSERT(tag >= 0 && tag < 16);
     return (value << 4) | tag;
 }
@@ -171,13 +211,42 @@ SxAtom sxTaggedShiftedValue(i64 tag, i64 value)
 SxAtom sxTaggedPointer(i64 tag, void* ptr)
 {
     i64 p = K_BITCAST(i64, ptr);
-    K_ASSERT((p & 0xf) == 0);
+    K_ASSERT(K_SX_GETTAG(p) == 0);
     return sxTaggedValue(tag, p);
 }
 
 SxAtom sxNull()
 {
     return 0;
+}
+
+SxAtom sxInteger(i64 i)
+{
+    return sxTaggedShiftedValue(SXT_INTEGER, i);
+}
+
+SxAtom sxFloat(f64 f)
+{
+    return sxTaggedValue(SXT_FLOAT, K_SX_REMOVETAG(K_BITCAST(i64, f)));
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Querying of primitives
+//----------------------------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------------------------
+// Conversion of primitives
+//----------------------------------------------------------------------------------------------------------------------
+
+i64 sxGetInteger(SxAtom atom)
+{
+    return (i64)(atom >> 4);
+}
+
+f64 sxGetFloat(SxAtom atom)
+{
+    SxAtom a = K_SX_REMOVETAG(atom);
+    return K_BITCAST(f64, a);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
