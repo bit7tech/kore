@@ -115,8 +115,14 @@ void debugBreakOnAlloc(int n);
 // Output a message to the debugger.
 void pr(const char* format, ...);
 
-// Output a message to the debugger using a varaiable argument list.
+// Output a message to the debugger using a variable argument list.
 void prv(const char* format, va_list args);
+
+// OUtput a message to the debugger with a newline.
+void prn(const char* format, ...);
+
+// OUtput a message to the debugger using a variable arguemnt list, then a newline.
+void prnv(const char *format, va_list args);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -767,6 +773,16 @@ void pr(const char* format, ...)
 
 //----------------------------------------------------------------------------------------------------------------------
 
+void prn(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    prnv(format, args);
+    va_end(args);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
 internal char gLogBuffer[1024];
 
 void prv(const char* format, va_list args)
@@ -774,9 +790,16 @@ void prv(const char* format, va_list args)
     vsnprintf(gLogBuffer, 1024, format, args);
 #if K_OS_WIN32
     OutputDebugStringA(gLogBuffer);
-#else
-    printf("%s", gLogBuffer);
 #endif
+    printf("%s", gLogBuffer);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+void prnv(const char *format, va_list args)
+{
+    prv(format, args);
+    pr("\n");
 }
 
 //----------------------------------------------------------------------------------------------------------------------{TIME}
