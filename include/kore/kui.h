@@ -142,11 +142,11 @@ internal WindowInfo* _windowGet(int handle)
     if (K_CREATE_HANDLE == handle)
     {
         // Allocate a new handle
-        i64 i = poolAcquire(g_windows);
-        g_windows[i].window.handle = (int)i;
-        g_windows[i].events = 0;
+        WindowInfo* info = poolAcquire(g_windows);
+        info->window.handle = (int)i;
+        info->events = 0;
         ++g_windowCount;
-        return &g_windows[i];
+        return info;
     }
     else
     {

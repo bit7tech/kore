@@ -304,8 +304,8 @@ void* __arrayInternalGrow(void* a, i64 increment, i64 elemSize);
 // Destroy a pool
 #define poolDone(p) arrayDone(p)
 
-// Allocate an element from the pool - return index
-#define poolAcquire(p) poolIndexOf((p), __poolInternalAcquire((p), (p) ? __poolCapacity(p) : 1, sizeof(*(p)), &(p)))
+// Allocate an element from the pool - return address
+#define poolAcquire(p) __poolInternalAcquire((p), (p) ? __poolCapacity(p) : 1, sizeof(*(p)), &(p))
 
 // Release an element back to the pool
 #define poolRecycle(p, i) __poolInternalRecycle((p), (i), sizeof(*(p)))
@@ -1198,7 +1198,7 @@ Data dataLoad(const char* fileName)
     Data b = { 0 };
 
     b.file = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-    if (b.file)
+    if (b.file != INVALID_HANDLE_VALUE)
     {
         DWORD fileSizeHigh, fileSizeLow;
         fileSizeLow = GetFileSize(b.file, &fileSizeHigh);
@@ -1235,7 +1235,7 @@ Data dataMake(const char* fileName, i64 size)
     Data b = { 0 };
 
     b.file = CreateFileA(fileName, GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-    if (b.file)
+    if (b.file != INVALID_HANDLE_VALUE)
     {
         DWORD fileSizeLow = (size & 0xffffffff);
         DWORD fileSizeHigh = (size >> 32);
