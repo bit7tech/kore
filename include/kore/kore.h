@@ -924,7 +924,11 @@ int main(int argc, char** argv)
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
-    gExePath = argv[0];
+#if K_OS_WIN32
+    gExePath = _pgmptr;
+#else
+#   error Implement executable path query for your OS.
+#endif
     return kmain(argc, argv);
 }
 
