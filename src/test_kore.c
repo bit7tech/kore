@@ -4,16 +4,16 @@
 
 #define K_IMPLEMENTATION
 #include <kore/kore.h>
+#include <kore/konsole.h>
 #include <kore/kgl.h>
 #include <kore/kui.h>
 #include <kore/parser.h>
 
-
 //----------------------------------------------------------------------------------------------------------------------
-// Main entry point
+// Window test
 //----------------------------------------------------------------------------------------------------------------------
 
-int kmain(int argc, char** argv)
+void testWindow()
 {
     Window wnd1 = {
         K_CREATE_HANDLE,
@@ -46,7 +46,55 @@ int kmain(int argc, char** argv)
     windowDone(&wnd2);
 
     printf("Final window width = %d\n", wnd1.bounds.size.cx);
+}
 
+//----------------------------------------------------------------------------------------------------------------------
+// Console test
+//----------------------------------------------------------------------------------------------------------------------
+
+void testConsole()
+{
+    consoleOpen();
+
+    char* line = 0;
+    i64 size = 0;
+
+    printf("Input: ");
+    i64 num = getLine(&line, &size, stdin);
+    K_FREE(line, size);
+}
+
+void testFullConsole()
+{
+    consoleOpen();
+    consoleSave();
+
+    Screen scr = { 0 };
+    scr.title = stringMake("Konsole Demo");
+    consoleScreenUpdate(&scr);
+
+    //consoleResize(80, 20);
+
+    consoleScreenClear(&scr, colour(EC_WHITE, EC_BLACK));
+    consoleScreenWrite(&scr, 1, 1, "Hello, World!");
+    scr.cursorX = 14;
+    scr.cursorY = 1;
+    consoleScreenApply(&scr);
+    consoleScreenDone(&scr);
+    consolePause();
+    consoleRestore();
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Main entry point
+//----------------------------------------------------------------------------------------------------------------------
+
+int kmain(int argc, char** argv)
+{
+    debugBreakOnAlloc(0);
+    //testWindow();
+    //testConsole();
+    testFullConsole();
     return 0;
 }
 

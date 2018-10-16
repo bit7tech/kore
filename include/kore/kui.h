@@ -143,7 +143,7 @@ internal WindowInfo* _windowGet(int handle)
     {
         // Allocate a new handle
         WindowInfo* info = poolAcquire(g_windows);
-        info->window.handle = (int)i;
+        info->window.handle = handle;
         info->events = 0;
         ++g_windowCount;
         return info;
