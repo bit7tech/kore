@@ -72,6 +72,9 @@ void consoleScreenUpdate(ScreenRef screen);
 // Apply the screen structure to the console.
 void consoleScreenApply(ScreenRef screen);
 
+// Set a new size for the screen structure.  Will truncate or wipe accordingly.
+void consoleScreenResize(ScreenRef screen, int newWidth, int newHeight, u8 expandColour);
+
 //----------------------------------------------------------------------------------------------------------------------
 // Screen drawing
 //----------------------------------------------------------------------------------------------------------------------
@@ -154,6 +157,71 @@ HANDLE gConsole = 0;
 
 //----------------------------------------------------------------------------------------------------------------------
 
+void consoleScreenResize(ScreenRef screen, int newWidth, int newHeight, u8 expandColour)
+{
+    i64 newSize = newWidth * newHeight;
+    if (screen->text)
+    {
+        i64 oldSize = screen->width * screen->height;
+        kchar* newText = K_ALLOC(newSize * sizeof(kchar));
+        u8* newAttr = K_ALLOC(newSize * sizeof(u8));
+
+        i64 row;
+        kchar* ot = screen->text;
+        u8* oa = screen->attr;
+        kchar* nt = newText;
+        u8* na = newAttr;
+        for (row = 0; row < K_MIN(screen->height, newHeight); ++row)
+        {
+            i64 col;
+            for (col = 0; col < K_MIN(screen->width, newWidth); ++col)
+            {
+                *nt++ = *ot++;
+                *na++ = *oa++;
+            }
+            if (col < newWidth)
+            {
+                // Still some more columns to render
+                *nt++ = ' ';
+                *na++ = expandColour;
+            }
+            else
+            {
+                // Width shrunk, jump to the next row of the original data.
+                ot += (screen->width - newWidth);
+                oa += (screen->width - newWidth);
+            }
+        }
+        if (row < newHeight)
+        {
+            // More rows to render.
+            for (; row < newHeight; ++row)
+            {
+                for (i64 col = 0; col < newWidth; ++col)
+                {
+                    *nt++ = ' ';
+                    *na++ = expandColour;
+                }
+            }
+        }
+        K_FREE(screen->text, oldSize * sizeof(kchar));
+        K_FREE(screen->attr, oldSize * sizeof(u8));
+        screen->text = newText;
+        screen->attr = newAttr;
+        screen->width = newWidth;
+        screen->height = newHeight;
+    }
+    else
+    {
+        screen->width = newWidth;
+        screen->height = newHeight;
+        screen->text = (kchar *)K_ALLOC(newSize * sizeof(kchar));
+        screen->attr = (u8 *)K_ALLOC(newSize * sizeof(u8));
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
 void consoleScreenUpdate(ScreenRef screen)
 {
     CONSOLE_SCREEN_BUFFER_INFO info;
@@ -162,32 +230,61 @@ void consoleScreenUpdate(ScreenRef screen)
     int currentHeight = info.srWindow.Bottom - info.srWindow.Top;
     int size = currentWidth * currentHeight;
 
-    if (screen->text == 0)
+    if (screen->text == 0 || screen->width != currentWidth || screen->height != currentHeight)
     {
-        // We haven't created the screen yet.
-        K_ASSERT(screen->width == 0, "Make sure we're starting for a zeroed structure for extra security.");
-        K_ASSERT(screen->height == 0, "Make sure we're starting for a zeroed structure for extra security.");
-        screen->width = currentWidth;
-        screen->height = currentHeight;
-        screen->text = (kchar *)K_ALLOC(size * sizeof(kchar));
-        screen->attr = (u8 *)K_ALLOC(size * sizeof(u8));
-        screen->cursorX = (int)info.dwCursorPosition.X;
-        screen->cursorY = (int)info.dwCursorPosition.Y;
+        consoleScreenResize(screen, currentWidth, currentHeight, colour(EC_LTGREY, EC_BLACK));
     }
-    else
-    {
 
+    CHAR_INFO* ci = K_ALLOC(size * sizeof(CHAR_INFO));
+    COORD bufferSize = { currentWidth, currentHeight };
+    COORD bufferXY = { 0, 0 };
+    
+    ReadConsoleOutput(gConsole, ci, bufferSize, bufferXY, &info.srWindow);
+
+    i64 i = 0;
+    for (i64 row = 0; row < currentHeight; ++row)
+    {
+        for (i64 col = 0; col < currentWidth; ++col)
+        {
+            screen->text[i] = (kchar)ci[i].Char.AsciiChar;
+            screen->attr[i] = (u8)ci[i].Attributes;
+            ++i;
+        }
     }
+    K_FREE(ci, size * sizeof(CHAR_INFO));
+
+    screen->cursorX = (int)info.dwCursorPosition.X;
+    screen->cursorY = (int)info.dwCursorPosition.Y;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 
 void consoleScreenApply(ScreenRef scr)
 {
-    CONSOLE_SCREEN_BUFFER_INFO info;
-    GetConsoleScreenBufferInfo(gConsole, &info);
+    CONSOLE_SCREEN_BUFFER_INFOEX info = { 0 };
+    info.cbSize = sizeof(info);
+    GetConsoleScreenBufferInfoEx(gConsole, &info);
     int currentWidth = info.srWindow.Right - info.srWindow.Left;
     int currentHeight = info.srWindow.Bottom - info.srWindow.Top;
+
+    if (currentWidth != scr->width || currentHeight != scr->height)
+    {
+        COORD sz = { scr->width, scr->height };
+
+        info.dwSize.X = scr->width;
+        info.dwSize.Y = scr->height;
+        info.dwCursorPosition.X = scr->cursorX;
+        info.dwCursorPosition.Y = scr->cursorY;
+        info.srWindow.Left = 0;
+        info.srWindow.Top = 0;
+        info.srWindow.Right = scr->width;
+        info.srWindow.Bottom = scr->height;
+        SetConsoleScreenBufferInfoEx(gConsole, &info);
+
+        //SetConsoleScreenBufferSize(gConsole, sz);
+        currentWidth = scr->width;
+        currentHeight = scr->height;
+    }
 
     COORD cursorPos = { scr->cursorX, scr->cursorY };
     SetConsoleCursorPosition(gConsole, cursorPos);

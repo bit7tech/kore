@@ -69,17 +69,21 @@ void testFullConsole()
     consoleOpen();
     consoleSave();
 
+    // Set up the console
     Screen scr = { 0 };
     scr.title = stringMake("Konsole Demo");
     consoleScreenUpdate(&scr);
+    consoleScreenResize(&scr, 50, 20, colour(EC_WHITE, EC_BLACK));
 
-    //consoleResize(80, 20);
-
+    // Draw something and change the cursor
     consoleScreenClear(&scr, colour(EC_WHITE, EC_BLACK));
     consoleScreenWrite(&scr, 1, 1, "Hello, World!");
+    consoleScreenRect(&scr, 1, 1, 13, 1, colour(EC_LTYELLOW, EC_RED));
     scr.cursorX = 14;
     scr.cursorY = 1;
     consoleScreenApply(&scr);
+
+    // Clean up
     consoleScreenDone(&scr);
     consolePause();
     consoleRestore();
