@@ -72,16 +72,29 @@ void testFullConsole()
     // Set up the console
     Screen scr = { 0 };
     scr.title = stringMake("Konsole Demo");
-//     consoleScreenUpdate(&scr);
-//     consoleScreenResize(&scr, 50, 20, colour(EC_WHITE, EC_BLACK));
-    consoleToggleFullScreen(&scr);
+    consoleScreenUpdate(&scr);
+    consoleScreenResize(&scr, 50, 20, colour(EC_WHITE, EC_BLACK));
 
     // Draw something and change the cursor
     consoleScreenClear(&scr, colour(EC_WHITE, EC_BLACK));
-    consoleScreenWrite(&scr, 1, 1, "Hello, World!");
-    consoleScreenRect(&scr, 1, 1, 13, 1, colour(EC_LTYELLOW, EC_RED));
-    scr.cursorX = 14;
-    scr.cursorY = 1;
+
+    for (int i = 0; i < 16; ++i)
+    {
+        for (int j = 0; j < 16; ++j)
+        {
+            consoleScreenWriteChar(&scr, j + 2, i + 2, i * 16 + j);
+        }
+    }
+    static kchar hex[] = "0123456789ABCDEF";
+    for (int i = 0; i < 16; ++i)
+    {
+        consoleScreenWriteChar(&scr, i + 2, 1, hex[i]);
+        consoleScreenWriteChar(&scr, 1, i + 2, hex[i]);
+    }
+    consoleScreenRect(&scr, 2, 1, 16, 1, colour(EC_LTYELLOW, EC_BLACK));
+    consoleScreenRect(&scr, 1, 2, 1, 16, colour(EC_LTRED, EC_BLACK));
+    scr.cursorX = 0;
+    scr.cursorY = 0;
     consoleScreenApply(&scr);
 
     // Clean up

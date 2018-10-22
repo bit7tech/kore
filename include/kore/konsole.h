@@ -85,6 +85,7 @@ void consoleToggleFullScreen(ScreenRef screen);
 void consoleScreenClear(ScreenRef scr, u8 colour);
 void consoleScreenWrite(ScreenRef scr, int x, int y, const kchar* str);
 void consoleScreenWriteRange(ScreenRef scr, int x, int y, const char* start, const kchar* end);
+void consoleScreenWriteChar(ScreenRef scr, int x, int y, kchar c);
 void consoleScreenRect(ScreenRef scr, int x, int y, int width, int height, u8 colour);
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -394,6 +395,13 @@ void consoleScreenWriteRange(ScreenRef scr, int x, int y, const kchar* start, co
 
 //----------------------------------------------------------------------------------------------------------------------
 
+void consoleScreenWriteChar(ScreenRef scr, int x, int y, kchar c)
+{
+    scr->text[y * scr->width + x] = c;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
 void consoleScreenRect(ScreenRef scr, int x, int y, int width, int height, u8 colour)
 {
     int x0 = (x < 0) ? (width += x, 0) : x;
@@ -408,7 +416,7 @@ void consoleScreenRect(ScreenRef scr, int x, int y, int width, int height, u8 co
         {
             *p++ = colour;
         }
-        p += (scr->width - x1);
+        p += (scr->width - x1 + x0);
     }
 }
 
