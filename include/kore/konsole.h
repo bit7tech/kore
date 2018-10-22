@@ -75,6 +75,9 @@ void consoleScreenApply(ScreenRef screen);
 // Set a new size for the screen structure.  Will truncate or wipe accordingly.
 void consoleScreenResize(ScreenRef screen, int newWidth, int newHeight, u8 expandColour);
 
+// Toggle fullscreen.  Will also update the Screen structure.
+void consoleToggleFullScreen(ScreenRef screen);
+
 //----------------------------------------------------------------------------------------------------------------------
 // Screen drawing
 //----------------------------------------------------------------------------------------------------------------------
@@ -218,6 +221,14 @@ void consoleScreenResize(ScreenRef screen, int newWidth, int newHeight, u8 expan
         screen->text = (kchar *)K_ALLOC(newSize * sizeof(kchar));
         screen->attr = (u8 *)K_ALLOC(newSize * sizeof(u8));
     }
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+
+void consoleToggleFullScreen(ScreenRef screen)
+{
+    SendMessageA(GetConsoleWindow(), WM_SYSKEYDOWN, VK_RETURN, 0x20000000);
+    consoleScreenUpdate(screen);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -72,8 +72,9 @@ void testFullConsole()
     // Set up the console
     Screen scr = { 0 };
     scr.title = stringMake("Konsole Demo");
-    consoleScreenUpdate(&scr);
-    consoleScreenResize(&scr, 50, 20, colour(EC_WHITE, EC_BLACK));
+//     consoleScreenUpdate(&scr);
+//     consoleScreenResize(&scr, 50, 20, colour(EC_WHITE, EC_BLACK));
+    consoleToggleFullScreen(&scr);
 
     // Draw something and change the cursor
     consoleScreenClear(&scr, colour(EC_WHITE, EC_BLACK));
