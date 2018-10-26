@@ -530,16 +530,16 @@ String stringTableGet(StringTable* table, StringToken token);
 //----------------------------------------------------------------------------------------------------------------------
 
 // Return the directory of a path
-String pathDirectory(String path);
+String pathDirectory(const String path);
 
 // Return a new string with the extension removed
-String pathRemoveExtension(String path);
+String pathRemoveExtension(const String path);
 
 // Return a new string with the extension of the path changed to a new one.
-String pathReplaceExtension(String path, const char* ext);
+String pathReplaceExtension(const String path, const char* ext);
 
 // Join two paths together, the second must be a relative path.
-String pathJoin(String p1, String p2);
+String pathJoin(const String p1, const String p2);
 
 // Return the path of the executable.
 String pathExe();
@@ -1752,7 +1752,7 @@ internal const i8* __findLastChar(String path, char c)
     }
 }
 
-String pathDirectory(String path)
+String pathDirectory(const String path)
 {
     K_CHECK_STRING(path);
 
@@ -1762,7 +1762,7 @@ String pathDirectory(String path)
     }
 }
 
-String pathRemoveExtension(String path)
+String pathRemoveExtension(const String path)
 {
     K_CHECK_STRING(path);
 
@@ -1772,7 +1772,7 @@ String pathRemoveExtension(String path)
     }
 }
 
-String pathReplaceExtension(String path, const char* ext)
+String pathReplaceExtension(const String path, const char* ext)
 {
     K_CHECK_STRING(path);
 
@@ -1789,7 +1789,7 @@ String pathReplaceExtension(String path, const char* ext)
     }
 }
 
-String pathJoin(String p1, String p2)
+String pathJoin(const String p1, const String p2)
 {
     return stringFormat("%s/%s", p1, p2);
 }
