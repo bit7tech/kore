@@ -228,6 +228,15 @@ void arenaPush(Arena* arena);
 // Deallocate memory from the previous restore point.
 void arenaPop(Arena* arena);
 
+// Return the amount of space left in the current arena (before expansion is required).
+i64 arenaSpace(Arena* arena);
+
+// Add characters according to the printf-style format.
+char* arenaFormatV(Arena* arena, const char* format, va_list args);
+
+// Add characters according to the printf-style format.
+char* arenaFormat(Arena* arena, const char* format, ...);
+
 #define K_ARENA_ALLOC(arena, t, count) (t *)arenaAlignedAlloc((arena), sizeof(t) * (count))
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1093,6 +1102,42 @@ void arenaPop(Arena* arena)
     p = (i64 *)(arena->start + arena->cursor);
     p[0] = 0xbbbbbbbbbbbbbbbb;
     arena->restore = p[1];
+}
+
+i64 arenaSpace(Arena* arena)
+{
+    return (arena->end - arena->start) - arena->cursor;
+}
+
+char* arenaFormatV(Arena* arena, const char* format, va_list args)
+{
+    i64 c = arena->cursor;
+    i64 maxSize = arenaSpace(arena);
+    char* p = 0;
+
+    int numChars = vsnprintf(arena->start + arena->cursor, maxSize, format, args);
+    if (numChars < maxSize)
+    {
+        // The string fit in the space left.
+        p = (char *)arenaAlloc(arena, numChars + 1);
+    }
+    else
+    {
+        // There wasn't enough room to hold the string.  Allocate more and try again.
+        char* p = (char *)arenaAlloc(arena, numChars + 1);
+        numChars = vsnprintf(p, numChars + 1, format, args);
+    }
+
+    return p;
+}
+
+char* arenaFormat(Arena* arena, const char* format, ...)
+{
+    va_list(args);
+    va_start(args, format);
+    char* p = arenaFormatV(arena, format, args);
+    va_end(args);
+    return p;
 }
 
 //----------------------------------------------------------------------------------------------------------------------{ARRAY}
