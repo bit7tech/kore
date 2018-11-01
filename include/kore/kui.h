@@ -143,7 +143,7 @@ internal WindowInfo* _windowGet(int handle)
     {
         // Allocate a new handle
         WindowInfo* info = poolAcquire(g_windows);
-        info->window.handle = handle;
+        info->window.handle = (int)poolIndexOf(g_windows, info);
         info->events = 0;
         ++g_windowCount;
         return info;
@@ -183,15 +183,18 @@ ATOM g_windowClassAtom = 0;
 
 internal void _windowResizeImage(WindowInfo* wci, int width, int height)
 {
-    K_ZERO(wci->bitmapInfo.bmiHeader);
-    wci->bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    wci->bitmapInfo.bmiHeader.biWidth = width;
-    wci->bitmapInfo.bmiHeader.biHeight = -height;
-    wci->bitmapInfo.bmiHeader.biPlanes = 1;
-    wci->bitmapInfo.bmiHeader.biBitCount = 32;
-    wci->bitmapInfo.bmiHeader.biClrImportant = BI_RGB;
-    wci->window.imageSize.cx = width;
-    wci->window.imageSize.cy = height;
+    if (wci->window.image)
+    {
+        K_ZERO(wci->bitmapInfo.bmiHeader);
+        wci->bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        wci->bitmapInfo.bmiHeader.biWidth = width;
+        wci->bitmapInfo.bmiHeader.biHeight = -height;
+        wci->bitmapInfo.bmiHeader.biPlanes = 1;
+        wci->bitmapInfo.bmiHeader.biBitCount = 32;
+        wci->bitmapInfo.bmiHeader.biClrImportant = BI_RGB;
+        wci->window.imageSize.cx = width;
+        wci->window.imageSize.cy = height;
+    }
 }
 
 internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
@@ -230,14 +233,17 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         case WM_PAINT:
             if (info)
             {
-                PAINTSTRUCT ps;
-                HDC dc = BeginPaint(wnd, &ps);
-                StretchDIBits(dc,
-                    0, 0, info->window.bounds.size.cx, info->window.bounds.size.cy,
-                    0, 0, info->window.imageSize.cx, info->window.imageSize.cy,
-                    info->window.image, &info->bitmapInfo,
-                    DIB_RGB_COLORS, SRCCOPY);
-                EndPaint(wnd, &ps);
+                if (info->window.image)
+                {
+                    PAINTSTRUCT ps;
+                    HDC dc = BeginPaint(wnd, &ps);
+                    StretchDIBits(dc,
+                        0, 0, info->window.bounds.size.cx, info->window.bounds.size.cy,
+                        0, 0, info->window.imageSize.cx, info->window.imageSize.cy,
+                        info->window.image, &info->bitmapInfo,
+                        DIB_RGB_COLORS, SRCCOPY);
+                    EndPaint(wnd, &ps);
+                }
             }
             break;
 
@@ -341,17 +347,25 @@ void windowApply(Window* window)
         // TODO: Changes
         WindowInfo* info = _windowGet(window->handle);
 
-        //
-        // Deal with image changes
-        //
-        if ((info->window.imageSize.cx != window->imageSize.cx) ||
-            (info->window.imageSize.cy != window->imageSize.cy))
+        // Check to see if we haven't destroyed this window.
+        if (info)
         {
-            _windowResizeImage(info, window->imageSize.cx, window->imageSize.cy);
-        }
-        info->window.image = window->image;
+            //
+            // Deal with image changes
+            //
+            // #todo: Create a new image when changing from null to a pointer.
+            if (info->window.image)
+            {
+                if ((info->window.imageSize.cx != window->imageSize.cx) ||
+                    (info->window.imageSize.cy != window->imageSize.cy))
+                {
+                    _windowResizeImage(info, window->imageSize.cx, window->imageSize.cy);
+                }
+                info->window.image = window->image;
+            }
 
-        InvalidateRect(info->win32Handle, 0, 0);
+            InvalidateRect(info->win32Handle, 0, 0);
+        }
     }
 }
 
@@ -362,7 +376,10 @@ void windowApply(Window* window)
 void windowUpdate(Window* window)
 {
     WindowInfo* info = _windowGet(window->handle);
-    *window = info->window;
+    if (info)
+    {
+        *window = info->window;
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------
