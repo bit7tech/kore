@@ -34,17 +34,21 @@ Rect;
 #define K_CREATE_HANDLE (-1)
 #define K_DESTROYED_HANDLE (-2)
 
-typedef struct  
+typedef struct Window  
 {
     int                 handle;         // Initialise this with K_CREATE_HANDLE on first pass to windowApply().
     String              title;
     Rect                bounds;
     bool                fullscreen;     // Set to YES for fullscreen
-    Size                imageSize;      // Image is stretched to window size
-    u32*                image;          // 2D bitmap of image in RGBA format
+    bool                opengl;         // Set to YES to set up an OpenGL
+    Size                imageSize;      // Image is stretched to window size.  If in OpenGL mode, this will determine the view.
+    u32*                image;          // 2D bitmap of image in RGBA format.  Must be NULL if in OpenGL mode.
 
     bool                resizeable;     // YES if window can be resized.
     Size                sizeSnap;       // The size snap that allows the window to be resized to a grid.
+
+    // Callbacks (set to 0 to do default behaviour).
+    void                (*paintFunc) (const struct Window *);    // Used to paint the image.  If openGL, context is set and buffers are swapped afterwards.
 }
 Window;
 
@@ -99,6 +103,8 @@ void windowAddGlobalEvent(const WindowEvent* event);            // Add an event 
 
 #ifdef K_IMPLEMENTATION
 
+#include <kore/kgl.h>
+
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 // Bounds API
@@ -137,6 +143,8 @@ typedef struct
 #if K_OS_WIN32
     HWND        win32Handle;
     BITMAPINFO  bitmapInfo;
+    HDC         dc;             // Device context for window
+    HGLRC       openGL;         // OpenGL context
 #endif
 
     Array(WindowEvent)  events;
@@ -331,7 +339,7 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         case WM_PAINT:
             if (info)
             {
-                if (info->window.image)
+                if (!info->openGL && info->window.image)
                 {
                     PAINTSTRUCT ps;
                     HDC dc = BeginPaint(wnd, &ps);
@@ -341,6 +349,22 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                         info->window.image, &info->bitmapInfo,
                         DIB_RGB_COLORS, SRCCOPY);
                     EndPaint(wnd, &ps);
+                }
+                else if (info->openGL)
+                {
+                    wglMakeCurrent(info->dc, info->openGL);
+
+                    if (info->window.paintFunc)
+                    {
+                        info->window.paintFunc(&info->window);
+                    }
+                    else
+                    {
+                        glClearColor(1, 0, 1, 1);
+                        glClear(GL_COLOR_BUFFER_BIT);
+                    }
+
+                    SwapBuffers(info->dc);
                 }
             }
             break;
@@ -352,6 +376,13 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             break;
 
         case WM_DESTROY:
+            if (info->openGL)
+            {
+                wglDeleteContext(info->openGL);
+                DeleteDC(info->dc);
+                info->openGL = 0;
+                info->dc = 0;
+            }
             if (info->window.fullscreen) _windowNoFullScreen(info);
             info->window.handle = K_DESTROYED_HANDLE;
             break;
@@ -412,6 +443,37 @@ internal WindowInfo* _windowCreate(Window* wnd)
     info->win32Handle = CreateWindowA("k_bitmap_window", wnd->title, style, r.left, r.top,
         r.right - r.left, r.bottom - r.top, 0, 0, GetModuleHandle(0), &wci);
 
+    if (info->win32Handle && wnd->opengl)
+    {
+        PIXELFORMATDESCRIPTOR pfd = {
+            sizeof(PIXELFORMATDESCRIPTOR),                                  // nSize
+            1,                                                              // nVersion
+            PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,     // dwFlags
+            PFD_TYPE_RGBA,                                                  // iPixelType
+            32,                                                             // cColorBits
+            0, 0,                                                           // cRedBits, cRedShift
+            0, 0,                                                           // cGreenBits, cGreenShift
+            0, 0,                                                           // cBlueBits, cBlueShift
+            0, 0,                                                           // cAlphaBits, cAlphaShift
+            0,                                                              // cAccumBits
+            0, 0, 0, 0,                                                     // cAccumRed/Green/Blue/AlphaBits
+            24,                                                             // cDepthBits
+            8,                                                              // cStencilBits
+            0,                                                              // cAuxBuffers
+            PFD_MAIN_PLANE,                                                 // iLayerType
+            0,                                                              // bReserved
+            0,                                                              // dwLayerMask
+            0,                                                              // dwVisibleMask
+            0,                                                              // dwDamageMask
+        };
+
+        info->dc = GetDC(info->win32Handle);
+        int pixelFormat = ChoosePixelFormat(info->dc, &pfd);
+        SetPixelFormat(info->dc, pixelFormat, &pfd);
+
+        info->openGL = wglCreateContext(info->dc);
+    }
+
     return info;
 }
 #endif
@@ -435,6 +497,7 @@ void windowInit(Window* window)
     window->resizeable = NO;
     window->sizeSnap.cx = 1;
     window->sizeSnap.cy = 1;
+    window->paintFunc = 0;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
