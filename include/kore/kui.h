@@ -472,6 +472,8 @@ internal WindowInfo* _windowCreate(Window* wnd)
         SetPixelFormat(info->dc, pixelFormat, &pfd);
 
         info->openGL = wglCreateContext(info->dc);
+        wglMakeCurrent(info->dc, info->openGL);
+        glInit();
     }
 
     return info;

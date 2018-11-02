@@ -3,7 +3,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------------------------
-// Initialise the GL system and bind all the functions.
+// Initialise the GL system and bind all the functions.  Make sure you call this after you create your first context
+// and make it your current.  You can call this more than once.
 //      int glInit(void);
 //
 // Test for a specific version of OpenGL.
@@ -13,6 +14,10 @@
 //      GL3WglProc glGetProcAddress(char const *proc);
 //
 //----------------------------------------------------------------------------------------------------------------------
+
+#pragma once
+
+#define K_DEBUG_OPENGL          NO
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -8183,7 +8188,12 @@ static GL3WglProc gl3w__get_proc(char const *proc)
 
     res = (GL3WglProc)wglGetProcAddress(proc);
     if (!res)
+    {
         res = (GL3WglProc)GetProcAddress(gl3w__libgl, proc);
+    }
+#if K_DEBUG_OPENGL
+    prn("%s: %p", proc, res);
+#endif
     return res;
 }
 
@@ -8270,10 +8280,19 @@ static void gl3w__load_procs(void);
 
 int glInit(void)
 {
-    gl3w__open_libgl();
-    gl3w__load_procs();
-    gl3w__close_libgl();
-    return gl3w__parse_version();
+    static bool glInitCalled = NO;
+    int version = 0;
+
+    if (!glInitCalled)
+    {
+        gl3w__open_libgl();
+        gl3w__load_procs();
+        gl3w__close_libgl();
+        version = gl3w__parse_version();
+        glInitCalled = YES;
+    }
+
+    return version;
 }
 
 int glIsSupported(int major, int minor)
