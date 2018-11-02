@@ -32,12 +32,14 @@ typedef struct
 Rect;
 
 #define K_CREATE_HANDLE (-1)
+#define K_DESTROYED_HANDLE (-2)
 
 typedef struct  
 {
     int                 handle;         // Initialise this with K_CREATE_HANDLE on first pass to windowApply().
     String              title;
     Rect                bounds;
+    bool                fullscreen;     // Set to YES for fullscreen
     Size                imageSize;      // Image is stretched to window size
     u32*                image;          // 2D bitmap of image in RGBA format
 
@@ -50,11 +52,22 @@ Window;
 #define K_EVENT_QUIT    (1)
 #define K_EVENT_CLOSE   (2)
 #define K_EVENT_SIZE    (3)
+#define K_EVENT_INPUT   (4)
 
 typedef struct 
 {
     int         type;           // One of the K_EVENT_??? defines.
     int         handle;         // Window handle creating the event.
+
+    union {
+        struct {
+            int     key;        // The value of the key press (using K_KEY_xxx defines) or ASCII code.
+            bool    down;       // YES if the key was pressed.
+            bool    shift;      // YES if either shift key was pressed.
+            bool    ctrl;       // YES if either ctrl key was pressed.
+            bool    alt;        // YES if either alt key was pressed.
+        } input;
+    };
 }
 WindowEvent;
 
@@ -127,12 +140,12 @@ typedef struct
 #endif
 
     Array(WindowEvent)  events;
+    Rect        originalBounds;     // Used to store original bounds when fullscreen is activated.
 }
 WindowInfo;
 
 Pool(WindowInfo) g_windows = 0;
 int g_windowCount = 0;
-int g_createdWindowCount = 0;
 Array(WindowEvent) g_globalEvents = 0;
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -147,6 +160,10 @@ internal WindowInfo* _windowGet(int handle)
         info->events = 0;
         ++g_windowCount;
         return info;
+    }
+    else if (K_DESTROYED_HANDLE == handle)
+    {
+        return 0;
     }
     else
     {
@@ -181,6 +198,69 @@ WindowCreateInfo;
 
 ATOM g_windowClassAtom = 0;
 
+internal RECT _windowCalcRect(Window* wnd, int style)
+{
+    RECT r = { 0, 0, wnd->bounds.size.cx, wnd->bounds.size.cy };
+    AdjustWindowRect(&r, style, FALSE);
+    r.right += -r.left + wnd->bounds.origin.x;
+    r.bottom += -r.top + wnd->bounds.origin.y;
+    r.left = wnd->bounds.origin.x;
+    r.top = wnd->bounds.origin.y;
+
+    return r;
+}
+
+internal void _windowFullScreen(WindowInfo* info)
+{
+    if (info->win32Handle)
+    {
+        SetWindowRgn(info->win32Handle, 0, FALSE);
+
+        int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+        int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+
+        info->originalBounds = info->window.bounds;
+
+        DEVMODE mode;
+        EnumDisplaySettings(0, 0, &mode);
+        mode.dmBitsPerPel = 32;
+        mode.dmPelsWidth = screenWidth;
+        mode.dmPelsHeight = screenHeight;
+        mode.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
+        long result = ChangeDisplaySettings(&mode, CDS_FULLSCREEN);
+
+        if (result == DISP_CHANGE_SUCCESSFUL)
+        {
+            DWORD style = GetWindowLong(info->win32Handle, GWL_STYLE);
+            style &= ~(WS_CAPTION | WS_THICKFRAME);
+            SetWindowLong(info->win32Handle, GWL_STYLE, style);
+
+            // Move the window to 0, 0
+            SetWindowPos(info->win32Handle, 0, 0, 0, screenWidth, screenHeight, SWP_NOZORDER);
+            InvalidateRect(info->win32Handle, 0, TRUE);
+        }
+    }
+
+    info->window.fullscreen = YES;
+}
+
+internal void _windowNoFullScreen(WindowInfo* info)
+{
+    ChangeDisplaySettings(NULL, CDS_FULLSCREEN);
+    info->window.fullscreen = NO;
+    info->window.bounds = info->originalBounds;
+    
+    DWORD style = GetWindowLong(info->win32Handle, GWL_STYLE);
+    style |= WS_CAPTION;
+    if (info->window.resizeable) style |= WS_THICKFRAME;
+    SetWindowLong(info->win32Handle, GWL_STYLE, style);
+
+    RECT rc = _windowCalcRect(&info->window, style);
+    
+    SetWindowPos(info->win32Handle, 0, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOZORDER);
+    InvalidateRect(info->win32Handle, 0, TRUE);
+}
+
 internal void _windowResizeImage(WindowInfo* wci, int width, int height)
 {
     if (wci->window.image)
@@ -206,7 +286,6 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         WindowInfo* info = _windowGet(wci->handle);
         info->win32Handle = wnd;
         SetWindowLongA(wnd, 0, (LONG)wci->handle);
-        ++g_createdWindowCount;
 
         // Initialise the associated image
         _windowResizeImage(info, info->window.imageSize.cx, info->window.imageSize.cy);
@@ -227,6 +306,25 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                 info->window.bounds.size.cy = HIWORD(l);
                 ev.type = K_EVENT_SIZE;
                 windowAddEvent(&info->window, &ev);
+
+                if (info->window.fullscreen)
+                {
+                    _windowFullScreen(info);
+                }
+            }
+            break;
+
+        case WM_MOVE:
+            if (info)
+            {
+                int x = LOWORD(l);
+                int y = HIWORD(l);
+                RECT rc = { x, y, x, y };
+                int style = GetWindowLong(wnd, GWL_STYLE);
+                AdjustWindowRect(&rc, style, NO);
+
+                info->window.bounds.origin.x = rc.left;
+                info->window.bounds.origin.y = rc.top;
             }
             break;
 
@@ -254,9 +352,23 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             break;
 
         case WM_DESTROY:
-            info->window.handle = K_CREATE_HANDLE;
-            if (0 == --g_createdWindowCount) PostQuitMessage(0);
+            if (info->window.fullscreen) _windowNoFullScreen(info);
+            info->window.handle = K_DESTROYED_HANDLE;
             break;
+
+        case WM_SYSKEYDOWN:
+        case WM_KEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYUP:
+            ev.type = K_EVENT_INPUT;
+            ev.input.key = (int)w;
+            ev.input.down = K_BOOL(msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
+            ev.input.shift = K_BOOL(HIBYTE(GetKeyState(VK_SHIFT)));
+            ev.input.ctrl = K_BOOL(HIBYTE(GetKeyState(VK_CONTROL)));
+            ev.input.alt = K_BOOL(HIBYTE(GetKeyState(VK_MENU)));
+            windowAddEvent(&info->window, &ev);
+            break;
+
 
         default:
             return DefWindowProcA(wnd, msg, w, l);
@@ -287,17 +399,12 @@ internal WindowInfo* _windowCreate(Window* wnd)
         g_windowClassAtom = RegisterClassExA(&wc);
     }
 
-    RECT r = { 0, 0, wnd->bounds.size.cx, wnd->bounds.size.cy };
     int style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
     if (wnd->resizeable)
     {
         style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
     }
-    AdjustWindowRect(&r, style, FALSE);
-    r.right += -r.left + wnd->bounds.origin.x;
-    r.bottom += -r.top + wnd->bounds.origin.y;
-    r.left = wnd->bounds.origin.x;
-    r.top = wnd->bounds.origin.y;
+    RECT r = _windowCalcRect(wnd, style);
 
     WindowCreateInfo wci;
     wci.handle = wnd->handle;
@@ -321,6 +428,7 @@ void windowInit(Window* window)
     window->bounds.origin.y = 10;
     window->bounds.size.cx = 800;
     window->bounds.size.cy = 600;
+    window->fullscreen = NO;
     window->imageSize.cx = 0;
     window->imageSize.cy = 0;
     window->image = 0;
@@ -350,6 +458,15 @@ void windowApply(Window* window)
         // Check to see if we haven't destroyed this window.
         if (info)
         {
+            //
+            // Deal with fullscreen
+            //
+            if (window->fullscreen != info->window.fullscreen)
+            {
+                if (window->fullscreen) _windowFullScreen(info);
+                else _windowNoFullScreen(info);
+            }
+
             //
             // Deal with image changes
             //
@@ -400,7 +517,7 @@ void windowDone(Window* window)
             }
         }
 #endif
-        window->handle = K_CREATE_HANDLE;
+        window->handle = K_DESTROYED_HANDLE;
         if (info) _windowDestroy(info);
     }
 }
