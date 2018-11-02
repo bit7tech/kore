@@ -293,6 +293,8 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         WindowCreateInfo* wci = (WindowCreateInfo *)cs->lpCreateParams;
         WindowInfo* info = _windowGet(wci->handle);
         info->win32Handle = wnd;
+        info->dc = 0;
+        info->openGL = 0;
         SetWindowLongA(wnd, 0, (LONG)wci->handle);
 
         // Initialise the associated image
@@ -318,6 +320,11 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                 if (info->window.fullscreen)
                 {
                     _windowFullScreen(info);
+                }
+
+                if (info->window.opengl && info->openGL)
+                {
+                    glViewport(0, 0, info->window.bounds.size.cx, info->window.bounds.size.cy);
                 }
             }
             break;
