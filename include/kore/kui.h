@@ -407,6 +407,9 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             windowAddEvent(&info->window, &ev);
             break;
 
+        case WM_MENUCHAR:
+            // This is handled to stop the beep that occurs when ALT+key is pressed.
+            return MAKELRESULT(0, MNC_CLOSE);
 
         default:
             return DefWindowProcA(wnd, msg, w, l);
