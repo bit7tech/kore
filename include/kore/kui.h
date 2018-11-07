@@ -48,7 +48,8 @@ typedef struct Window
     Size                sizeSnap;       // The size snap that allows the window to be resized to a grid.
 
     // Callbacks (set to 0 to do default behaviour).
-    void                (*paintFunc) (const struct Window *);    // Used to paint the image.  If openGL, context is set and buffers are swapped afterwards.
+    void                (*paintFunc) (const struct Window *);               // Used to paint the image.  If openGL, context is set and buffers are swapped afterwards.
+    void                (*sizeFunc) (const struct Window *, int w, int h);  // This is called whenever the window is resized.
 }
 Window;
 
@@ -326,6 +327,11 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                 {
                     glViewport(0, 0, info->window.bounds.size.cx, info->window.bounds.size.cy);
                 }
+
+                if (info->window.sizeFunc)
+                {
+                    info->window.sizeFunc(&info->window, info->window.bounds.size.cx, info->window.bounds.size.cy);
+                }
             }
             break;
 
@@ -510,6 +516,7 @@ void windowInit(Window* window)
     window->sizeSnap.cx = 1;
     window->sizeSnap.cy = 1;
     window->paintFunc = 0;
+    window->sizeFunc = 0;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -557,6 +564,12 @@ void windowApply(Window* window)
             }
 
             InvalidateRect(info->win32Handle, 0, 0);
+
+            //
+            // Update the callbacks
+            //
+            info->window.paintFunc = window->paintFunc;
+            info->window.sizeFunc = window->sizeFunc;
         }
     }
 }
