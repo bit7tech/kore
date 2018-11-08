@@ -57,7 +57,7 @@ Window;
 #define K_EVENT_QUIT    (1)
 #define K_EVENT_CLOSE   (2)
 #define K_EVENT_SIZE    (3)
-#define K_EVENT_INPUT   (4)
+#define K_EVENT_KEY     (4)
 
 typedef struct 
 {
@@ -286,6 +286,24 @@ internal void _windowResizeImage(WindowInfo* wci, int width, int height)
     }
 }
 
+internal void renderOpenGL(HWND wnd, WindowInfo* info)
+{
+    wglMakeCurrent(info->dc, info->openGL);
+
+    if (info->window.paintFunc)
+    {
+        info->window.paintFunc(&info->window);
+    }
+    else
+    {
+        glClearColor(1, 0, 1, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
+
+    SwapBuffers(info->dc);
+
+}
+
 internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
 {
     if (msg == WM_CREATE)
@@ -365,19 +383,7 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                 }
                 else if (info->openGL)
                 {
-                    wglMakeCurrent(info->dc, info->openGL);
-
-                    if (info->window.paintFunc)
-                    {
-                        info->window.paintFunc(&info->window);
-                    }
-                    else
-                    {
-                        glClearColor(1, 0, 1, 1);
-                        glClear(GL_COLOR_BUFFER_BIT);
-                    }
-
-                    SwapBuffers(info->dc);
+                    renderOpenGL(wnd, info);
                 }
             }
             break;
@@ -404,7 +410,7 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         case WM_KEYDOWN:
         case WM_SYSKEYUP:
         case WM_KEYUP:
-            ev.type = K_EVENT_INPUT;
+            ev.type = K_EVENT_KEY;
             ev.input.key = (int)w;
             ev.input.down = K_BOOL(msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
             ev.input.shift = K_BOOL(HIBYTE(GetKeyState(VK_SHIFT)));
@@ -563,13 +569,13 @@ void windowApply(Window* window)
                 info->window.image = window->image;
             }
 
-            InvalidateRect(info->win32Handle, 0, 0);
-
             //
             // Update the callbacks
             //
             info->window.paintFunc = window->paintFunc;
             info->window.sizeFunc = window->sizeFunc;
+
+            InvalidateRect(info->win32Handle, 0, 0);
         }
     }
 }
