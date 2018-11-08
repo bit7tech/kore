@@ -274,7 +274,7 @@ char* arenaFormat(Arena* arena, const char* format, ...);
 #define arrayReserve(a, n) (__arrayMayGrow(a, n))
 
 // Clear the array.
-#define arrayClear(a) (arrayCount(a) = 0)
+#define arrayClear(a) ((a) ? (__arrayCount(a) = 0) : 0)
 
 // Delete an array entry.
 #define arrayDelete(a, i) (memoryMove(&(a)[(i)+1], &(a)[(i)], (__arrayCount(a) - (i) - 1) * sizeof(*(a))), --__arrayCount(a), (a))
