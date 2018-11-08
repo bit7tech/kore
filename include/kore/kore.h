@@ -714,6 +714,52 @@ int regexMatch(RegEx regex, const i8* text);
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
+// Geometry
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+
+typedef struct _Point
+{
+    int x;
+    int y;
+}
+Point, *PointRef;
+
+typedef struct _Size
+{
+    int w;
+    int h;
+}
+Size, *SizeRef;
+
+typedef struct _Rect
+{
+    int x, y;
+    int w, h;
+}
+Rect, *RectRef;
+
+Point pointMake(int x, int y);
+Size sizeMake(int w, int h);
+Rect rectMake(int x, int y, int w, int h);
+
+Rect rectUnion(Rect a, Rect b);
+Rect rectIntersect(Rect a, Rect b);
+
+void blit(
+    void* dst,              // The destination 2d array
+    Size dstSize,           // The destination 2d array size
+    const void* src,        // The source 2d array
+    Size srcSize,           // The source 2d array size
+    int dx, int dy,         // The coordinates in the destination 2d array to copy to.
+    int sx, int sy,         // The coordinates in the source 2d array to copy from
+    int w, int h,           // Dimensions of the rectangle that is copied (same for both source and destination).
+    int elemSize);          // Size of each element in the arrays
+
+
+
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -724,6 +770,7 @@ int regexMatch(RegEx regex, const i8* text);
 //  CRC32       CRC-32 checksumming
 //  DATA        Data loading
 //  ENTRY       Entry point
+//  GEOMETRY    Geometry API
 //  HASH        Fast hashing
 //  MEMORY      Memory management
 //  PLATFORM    Platform-specific code
@@ -2938,6 +2985,77 @@ internal bool regexMatchPattern(RegExElem* pattern, const i8* text)
     while ((text[0] != 0) && regexMatchOne(*pattern++, *text++));
 
     return NO;
+}
+
+//----------------------------------------------------------------------------------------------------------------------{GEOMETRY}
+//----------------------------------------------------------------------------------------------------------------------
+// Geometry API
+//----------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
+
+Point pointMake(int x, int y)
+{
+    Point p = { x, y };
+    return p;
+}
+
+Size sizeMake(int w, int h)
+{
+    Size s = { w, h };
+    return s;
+}
+
+Rect rectMake(int x, int y, int w, int h)
+{
+    Rect r = { x, y, w, h };
+    return r;
+}
+
+Rect rectUnion(Rect r1, Rect r2)
+{
+    int l = K_MIN(r1.x, r2.x);
+    int t = K_MIN(r1.y, r2.y);
+    int r = K_MAX(r1.x + r1.w, r2.x + r2.w);
+    int b = K_MAX(r1.y + r1.h, r2.y + r2.h);
+
+    Rect rc = { l, t, r - l, b - t };
+    return rc;
+}
+
+Rect rectIntersect(Rect r1, Rect r2)
+{
+    int l = K_MAX(r1.x, r2.x);
+    int t = K_MAX(r1.y, r2.y);
+    int r = K_MIN(r1.x + r1.w, r2.x + r2.w);
+    int b = K_MIN(r1.y + r1.h, r2.y + r2.h);
+
+    Rect rc = { l, t, r - l, b - t };
+    return rc;
+}
+
+void blit(void* dst, Size dstSize, const void* src, Size srcSize, int dx, int dy, int sx, int sy, int w, int h, int elemSize)
+{
+    Rect dstRect0 = rectMake(0, 0, dstSize.w, dstSize.h);
+    Rect dstRect1 = rectMake(dx, dy, w, h);
+    Rect dstRectIntersect = rectIntersect(dstRect0, dstRect1);
+
+    Rect srcRect0 = rectMake(0, 0, srcSize.w, srcSize.h);
+    Rect srcRect1 = rectMake(sx, sy, w, h);
+    Rect srcRectIntersect = rectIntersect(srcRect0, srcRect1);
+
+    w = K_MIN(dstRectIntersect.w, srcRectIntersect.w);
+    h = K_MIN(dstRectIntersect.h, srcRectIntersect.h);
+
+    u8* d = (u8 *)dst + (dstRectIntersect.y * dstSize.w + dstRectIntersect.x) * elemSize;
+    u8* s = (u8 *)src + (srcRectIntersect.y * srcSize.w + srcRectIntersect.x) * elemSize;
+    int dStride = dstSize.w * elemSize;
+    int sStride = srcSize.w * elemSize;
+    for (int row = 0; row < h; ++row)
+    {
+        memcpy(d, s, w * elemSize);
+        d += dStride;
+        s += dStride;
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -10,27 +10,6 @@
 // Structs
 //----------------------------------------------------------------------------------------------------------------------
 
-typedef struct  
-{
-    int x;
-    int y;
-}
-Point;
-
-typedef struct  
-{
-    int cx;
-    int cy;
-}
-Size;
-
-typedef struct  
-{
-    Point origin;
-    Size size;
-}
-Rect;
-
 #define K_CREATE_HANDLE (-1)
 #define K_DESTROYED_HANDLE (-2)
 
@@ -77,14 +56,6 @@ typedef struct
 WindowEvent;
 
 //----------------------------------------------------------------------------------------------------------------------
-// Bounds API
-//----------------------------------------------------------------------------------------------------------------------
-
-Point pointMake(int x, int y);
-Size sizeMake(int cx, int cy);
-Rect rectMake(Point p, Size size);
-
-//----------------------------------------------------------------------------------------------------------------------
 // Window API
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -96,7 +67,6 @@ void windowDone(Window* window);            // Destroy window.
 bool windowPoll(WindowEvent* event);        // Obtain events from the window.
 void windowAddEvent(Window* window, const WindowEvent* event);  // Add an event to window event queue.
 void windowAddGlobalEvent(const WindowEvent* event);            // Add an event not related to a window or referred
-                                                                // window is destroyed.
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -106,30 +76,6 @@ void windowAddGlobalEvent(const WindowEvent* event);            // Add an event 
 #ifdef K_IMPLEMENTATION
 
 #include <kore/kgl.h>
-
-//----------------------------------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------------------------------
-// Bounds API
-//----------------------------------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------------------------------
-
-Point pointMake(int x, int y)
-{
-    Point p = { x, y };
-    return p;
-}
-
-Size sizeMake(int cx, int cy)
-{
-    Size s = { cx, cy };
-    return s;
-}
-
-Rect rectMake(Point p, Size size)
-{
-    Rect r = { p, size };
-    return r;
-}
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -210,12 +156,12 @@ ATOM g_windowClassAtom = 0;
 
 internal RECT _windowCalcRect(Window* wnd, int style)
 {
-    RECT r = { 0, 0, wnd->bounds.size.cx, wnd->bounds.size.cy };
+    RECT r = { 0, 0, wnd->bounds.w, wnd->bounds.h };
     AdjustWindowRect(&r, style, FALSE);
-    r.right += -r.left + wnd->bounds.origin.x;
-    r.bottom += -r.top + wnd->bounds.origin.y;
-    r.left = wnd->bounds.origin.x;
-    r.top = wnd->bounds.origin.y;
+    r.right += -r.left + wnd->bounds.x;
+    r.bottom += -r.top + wnd->bounds.y;
+    r.left = wnd->bounds.x;
+    r.top = wnd->bounds.y;
 
     return r;
 }
@@ -282,8 +228,8 @@ internal void _windowResizeImage(WindowInfo* wci, int width, int height)
         wci->bitmapInfo.bmiHeader.biPlanes = 1;
         wci->bitmapInfo.bmiHeader.biBitCount = 32;
         wci->bitmapInfo.bmiHeader.biClrImportant = BI_RGB;
-        wci->window.imageSize.cx = width;
-        wci->window.imageSize.cy = height;
+        wci->window.imageSize.w = width;
+        wci->window.imageSize.h = height;
     }
 }
 
@@ -311,8 +257,8 @@ internal void resizeWindow(HWND wnd, WindowInfo* info, int newWidth, int newHeig
 {
     if (info)
     {
-        info->window.bounds.size.cx = newWidth;
-        info->window.bounds.size.cy = newHeight;
+        info->window.bounds.w = newWidth;
+        info->window.bounds.h = newHeight;
 
         if (info->window.fullscreen)
         {
@@ -344,7 +290,7 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         SetWindowLongA(wnd, 0, (LONG)wci->handle);
 
         // Initialise the associated image
-        _windowResizeImage(info, info->window.imageSize.cx, info->window.imageSize.cy);
+        _windowResizeImage(info, info->window.imageSize.w, info->window.imageSize.h);
     }
     else
     {
@@ -379,8 +325,8 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                 int style = GetWindowLong(wnd, GWL_STYLE);
                 AdjustWindowRect(&rc, style, NO);
 
-                info->window.bounds.origin.x = rc.left;
-                info->window.bounds.origin.y = rc.top;
+                info->window.bounds.x = rc.left;
+                info->window.bounds.y = rc.top;
             }
             break;
 
@@ -392,8 +338,8 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                     PAINTSTRUCT ps;
                     HDC dc = BeginPaint(wnd, &ps);
                     StretchDIBits(dc,
-                        0, 0, info->window.bounds.size.cx, info->window.bounds.size.cy,
-                        0, 0, info->window.imageSize.cx, info->window.imageSize.cy,
+                        0, 0, info->window.bounds.w, info->window.bounds.h,
+                        0, 0, info->window.imageSize.w, info->window.imageSize.h,
                         info->window.image, &info->bitmapInfo,
                         DIB_RGB_COLORS, SRCCOPY);
                     EndPaint(wnd, &ps);
@@ -527,17 +473,17 @@ void windowInit(Window* window)
 {
     window->handle = K_CREATE_HANDLE;
     window->title = 0;
-    window->bounds.origin.x = 10;
-    window->bounds.origin.y = 10;
-    window->bounds.size.cx = 800;
-    window->bounds.size.cy = 600;
+    window->bounds.x = 10;
+    window->bounds.y = 10;
+    window->bounds.w = 800;
+    window->bounds.h = 600;
     window->fullscreen = NO;
-    window->imageSize.cx = 0;
-    window->imageSize.cy = 0;
+    window->imageSize.w = 0;
+    window->imageSize.h = 0;
     window->image = 0;
     window->resizeable = NO;
-    window->sizeSnap.cx = 1;
-    window->sizeSnap.cy = 1;
+    window->sizeSnap.w = 1;
+    window->sizeSnap.h = 1;
     window->paintFunc = 0;
     window->sizeFunc = 0;
 }
@@ -591,10 +537,10 @@ void windowApply(Window* window)
             // #todo: Create a new image when changing from null to a pointer.
             if (info->window.image)
             {
-                if ((info->window.imageSize.cx != window->imageSize.cx) ||
-                    (info->window.imageSize.cy != window->imageSize.cy))
+                if ((info->window.imageSize.w != window->imageSize.w) ||
+                    (info->window.imageSize.h != window->imageSize.h))
                 {
-                    _windowResizeImage(info, window->imageSize.cx, window->imageSize.cy);
+                    _windowResizeImage(info, window->imageSize.w, window->imageSize.h);
                 }
                 info->window.image = window->image;
             }
