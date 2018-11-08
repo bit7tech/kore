@@ -88,11 +88,12 @@ Rect rectMake(Point p, Size size);
 // Window API
 //----------------------------------------------------------------------------------------------------------------------
 
-void windowInit(Window* window);        // Set a window to default parameters.
-void windowApply(Window* window);       // Apply the parameters to a window or create a new one.
-void windowUpdate(Window* window);      // Update window structure to reflect current OS state of window and repaint.
-void windowDone(Window* window);        // Destroy window.
-bool windowPoll(WindowEvent* event);    // Obtain events from the window.
+void windowInit(Window* window);            // Set a window to default parameters.
+void windowApply(Window* window);           // Apply the parameters to a window or create a new one, and repaint.
+void windowUpdate(Window* window);          // Update window structure to reflect current OS state of window
+void windowRedraw(const Window* window);    // Redraw the window.
+void windowDone(Window* window);            // Destroy window.
+bool windowPoll(WindowEvent* event);        // Obtain events from the window.
 void windowAddEvent(Window* window, const WindowEvent* event);  // Add an event to window event queue.
 void windowAddGlobalEvent(const WindowEvent* event);            // Add an event not related to a window or referred
                                                                 // window is destroyed.
@@ -288,20 +289,46 @@ internal void _windowResizeImage(WindowInfo* wci, int width, int height)
 
 internal void renderOpenGL(HWND wnd, WindowInfo* info)
 {
-    wglMakeCurrent(info->dc, info->openGL);
-
-    if (info->window.paintFunc)
+    if (info)
     {
-        info->window.paintFunc(&info->window);
+        wglMakeCurrent(info->dc, info->openGL);
+
+        if (info->window.paintFunc)
+        {
+            info->window.paintFunc(&info->window);
+        }
+        else
+        {
+            glClearColor(1, 0, 1, 1);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+
+        SwapBuffers(info->dc);
     }
-    else
+}
+
+internal void resizeWindow(HWND wnd, WindowInfo* info, int newWidth, int newHeight)
+{
+    if (info)
     {
-        glClearColor(1, 0, 1, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
+        info->window.bounds.size.cx = newWidth;
+        info->window.bounds.size.cy = newHeight;
+
+        if (info->window.fullscreen)
+        {
+            _windowFullScreen(info);
+        }
+
+        if (info->window.opengl && info->openGL)
+        {
+            glViewport(0, 0, newWidth, newHeight);
+        }
+
+        if (info->window.sizeFunc)
+        {
+            info->window.sizeFunc(&info->window, newWidth, newHeight);
+        }
     }
-
-    SwapBuffers(info->dc);
-
 }
 
 internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
@@ -329,27 +356,17 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         switch (msg)
         {
         case WM_SIZE:
-            if (info)
+            resizeWindow(wnd, info, LOWORD(l), HIWORD(l));
+            ev.type = K_EVENT_SIZE;
+            windowAddEvent(&info->window, &ev);
+            break;
+
+        case WM_SIZING:
             {
-                info->window.bounds.size.cx = LOWORD(l);
-                info->window.bounds.size.cy = HIWORD(l);
+                RECT* rc = (RECT *)l;
+                resizeWindow(wnd, info, rc->right - rc->left, rc->bottom - rc->top);
                 ev.type = K_EVENT_SIZE;
                 windowAddEvent(&info->window, &ev);
-
-                if (info->window.fullscreen)
-                {
-                    _windowFullScreen(info);
-                }
-
-                if (info->window.opengl && info->openGL)
-                {
-                    glViewport(0, 0, info->window.bounds.size.cx, info->window.bounds.size.cy);
-                }
-
-                if (info->window.sizeFunc)
-                {
-                    info->window.sizeFunc(&info->window, info->window.bounds.size.cx, info->window.bounds.size.cy);
-                }
             }
             break;
 
@@ -523,6 +540,19 @@ void windowInit(Window* window)
     window->sizeSnap.cy = 1;
     window->paintFunc = 0;
     window->sizeFunc = 0;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Redraw
+//----------------------------------------------------------------------------------------------------------------------
+
+void windowRedraw(const Window* window)
+{
+    if (window->handle != K_CREATE_HANDLE && window->handle != K_DESTROYED_HANDLE)
+    {
+        WindowInfo* info = _windowGet(window->handle);
+        InvalidateRect(info->win32Handle, 0, 0);
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------
