@@ -37,6 +37,7 @@ Window;
 #define K_EVENT_CLOSE   (2)
 #define K_EVENT_SIZE    (3)
 #define K_EVENT_KEY     (4)
+#define K_EVENT_CHAR    (5)
 
 typedef struct 
 {
@@ -51,6 +52,7 @@ typedef struct
             bool    ctrl;       // YES if either ctrl key was pressed.
             bool    alt;        // YES if either alt key was pressed.
         } input;
+        char ch;                // Character input.
     };
 }
 WindowEvent;
@@ -380,6 +382,15 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             ev.input.ctrl = K_BOOL(HIBYTE(GetKeyState(VK_CONTROL)));
             ev.input.alt = K_BOOL(HIBYTE(GetKeyState(VK_MENU)));
             windowAddEvent(&info->window, &ev);
+            break;
+
+        case WM_CHAR:
+            if ((l & 0xa000) == 0)
+            {
+                ev.type = K_EVENT_CHAR;
+                ev.ch = (char)w;
+                windowAddEvent(&info->window, &ev);
+            }
             break;
 
         case WM_MENUCHAR:
