@@ -3054,7 +3054,7 @@ void blit(void* dst, Size dstSize, const void* src, Size srcSize, int dx, int dy
     {
         memcpy(d, s, w * elemSize);
         d += dStride;
-        s += dStride;
+        s += sStride;
     }
 }
 
