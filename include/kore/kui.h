@@ -801,28 +801,28 @@ void windowAddGlobalEvent(const WindowEvent* event)
 
 bool keyPressed(const WindowEvent* ev, int key)
 {
-    return ev.input.down && !ev.input.shift && !ev.input.ctrl && !ev.input.alt && ev.input.key == key;
+    return ev->input.down && !ev->input.shift && !ev->input.ctrl && !ev->input.alt && ev->input.key == key;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 
 bool keyShiftPressed(const WindowEvent* ev, int key)
 {
-    return ev.input.down && ev.input.shift && !ev.input.ctrl && !ev.input.alt && ev.input.key == key;
+    return ev->input.down && ev->input.shift && !ev->input.ctrl && !ev->input.alt && ev->input.key == key;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 
 bool keyCtrlPressed(const WindowEvent* ev, int key)
 {
-    return ev.input.down && !ev.input.shift && ev.input.ctrl && !ev.input.alt && ev.input.key == key;
+    return ev->input.down && !ev->input.shift && ev->input.ctrl && !ev->input.alt && ev->input.key == key;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 
 bool keyAltPressed(const WindowEvent* ev, int key)
 {
-    return ev.input.down && !ev.input.shift && !ev.input.ctrl && ev.input.alt && ev.input.key == key;
+    return ev->input.down && !ev->input.shift && !ev->input.ctrl && ev->input.alt && ev->input.key == key;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
