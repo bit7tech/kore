@@ -19,7 +19,9 @@ typedef struct Window
     String              title;
     Rect                bounds;
     bool                fullscreen;     // Set to YES for fullscreen
+#if K_OPENGL
     bool                opengl;         // Set to YES to set up an OpenGL
+#endif
     Size                imageSize;      // Image is stretched to window size.  If in OpenGL mode, this will determine the view.
     u32*                image;          // 2D bitmap of image in RGBA format.  Must be NULL if in OpenGL mode.
 
@@ -77,7 +79,9 @@ void windowAddGlobalEvent(const WindowEvent* event);            // Add an event 
 
 #ifdef K_IMPLEMENTATION
 
-#include <kore/kgl.h>
+#if K_OPENGL
+#   include <kore/kgl.h>
+#endif
 
 //----------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------------------------
@@ -93,8 +97,10 @@ typedef struct
 #if K_OS_WIN32
     HWND        win32Handle;
     BITMAPINFO  bitmapInfo;
+#if K_OPENGL
     HDC         dc;             // Device context for window
     HGLRC       openGL;         // OpenGL context
+#endif
 #endif
 
     Array(WindowEvent)  events;
@@ -235,6 +241,7 @@ internal void _windowResizeImage(WindowInfo* wci, int width, int height)
     }
 }
 
+#if K_OPENGL
 internal void renderOpenGL(HWND wnd, WindowInfo* info)
 {
     if (info)
@@ -254,6 +261,7 @@ internal void renderOpenGL(HWND wnd, WindowInfo* info)
         SwapBuffers(info->dc);
     }
 }
+#endif
 
 internal void resizeWindow(HWND wnd, WindowInfo* info, int newWidth, int newHeight)
 {
@@ -267,10 +275,12 @@ internal void resizeWindow(HWND wnd, WindowInfo* info, int newWidth, int newHeig
             _windowFullScreen(info);
         }
 
+#if K_OPENGL
         if (info->window.opengl && info->openGL)
         {
             glViewport(0, 0, newWidth, newHeight);
         }
+#endif
 
         if (info->window.sizeFunc)
         {
@@ -287,8 +297,10 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         WindowCreateInfo* wci = (WindowCreateInfo *)cs->lpCreateParams;
         WindowInfo* info = _windowGet(wci->handle);
         info->win32Handle = wnd;
+#if K_OPENGL
         info->dc = 0;
         info->openGL = 0;
+#endif
         SetWindowLongA(wnd, 0, (LONG)wci->handle);
 
         // Initialise the associated image
@@ -335,7 +347,13 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
         case WM_PAINT:
             if (info)
             {
-                if (!info->openGL && info->window.image)
+#if K_OPENGL
+                if (info->openGL)
+                {
+                    renderOpenGL(wnd, info);
+                } else
+#endif
+                if (info->window.image)
                 {
                     PAINTSTRUCT ps;
                     HDC dc = BeginPaint(wnd, &ps);
@@ -345,10 +363,6 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                         info->window.image, &info->bitmapInfo,
                         DIB_RGB_COLORS, SRCCOPY);
                     EndPaint(wnd, &ps);
-                }
-                else if (info->openGL)
-                {
-                    renderOpenGL(wnd, info);
                 }
             }
             break;
@@ -360,6 +374,7 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
             break;
 
         case WM_DESTROY:
+#if K_OPENGL
             if (info->openGL)
             {
                 wglDeleteContext(info->openGL);
@@ -367,6 +382,7 @@ internal LRESULT CALLBACK _windowProc(HWND wnd, UINT msg, WPARAM w, LPARAM l)
                 info->openGL = 0;
                 info->dc = 0;
             }
+#endif
             if (info->window.fullscreen) _windowNoFullScreen(info);
             info->window.handle = K_DESTROYED_HANDLE;
             break;
@@ -439,6 +455,7 @@ internal WindowInfo* _windowCreate(Window* wnd)
     info->win32Handle = CreateWindowA("k_bitmap_window", wnd->title, style, r.left, r.top,
         r.right - r.left, r.bottom - r.top, 0, 0, GetModuleHandle(0), &wci);
 
+#if K_OPENGL
     if (info->win32Handle && wnd->opengl)
     {
         PIXELFORMATDESCRIPTOR pfd = {
@@ -471,6 +488,7 @@ internal WindowInfo* _windowCreate(Window* wnd)
         wglMakeCurrent(info->dc, info->openGL);
         glInit();
     }
+#endif // K_OPENGL
 
     return info;
 }
