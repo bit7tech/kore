@@ -664,6 +664,24 @@ void windowApply(Window* window)
                 if (window->fullscreen) _windowFullScreen(info);
                 else _windowNoFullScreen(info);
             }
+            
+            //
+            // Deal with size changes
+            //
+            if (window->bounds.x != info->window.bounds.x ||
+                window->bounds.y != info->window.bounds.y ||
+                window->bounds.w != info->window.bounds.w ||
+                window->bounds.h != info->window.bounds.h)
+            {
+                RECT rc = _windowCalcRect(window, GetWindowLongA(info->win32Handle, GWL_STYLE));
+                SetWindowPos(info->win32Handle, 0, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, 
+                    SWP_NOACTIVATE | SWP_NOZORDER);
+
+                info->window.bounds.x = window->bounds.x;
+                info->window.bounds.y = window->bounds.y;
+                info->window.bounds.w = window->bounds.w;
+                info->window.bounds.h = window->bounds.h;
+            }
 
             //
             // Deal with image changes
