@@ -970,7 +970,7 @@ int main(int argc, char** argv)
 #endif
 
 #if K_OS_WIN32
-    gExePath = _pgmptr;
+    _get_pgmptr((char **)&gExePath);
 #else
 #   error Implement executable path query for your OS.
 #endif
